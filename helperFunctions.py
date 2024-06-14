@@ -14,28 +14,47 @@ from scipy.spatial.distance import cdist
 
 
 class pointcloud:
-    def __init__(self, 
-    name, 
-    points,
-    domain=None, 
-    unitOfLength=None
-    ):
+    """
+    Represents a point cloud object.
+
+    Attributes:
+        name (str): The name of the point cloud.
+        points (numpy.ndarray): An (n,d) numpy array representing the points in the point cloud.
+        domain (numpy.ndarray, optional): An nDimensions by 2 numpy array specifying the domain min and max values in each dimension. If not provided, the domain is estimated based on the most extreme values of the points. Default is None.
+        unitOfLength (str, optional): The unit of length for the points. Default is None.
+
+    Methods:
+        __init__(name, points, domain=None, unitOfLength=None): Initializes a pointcloud object.
+        __str__(): Returns a string representation of the pointcloud object.
+        addLabels(labelName, labelType, labels, cmap=None): Adds labels to the pointcloud object.
+        changeIndividualLabelColor(labelName, labelToUpdate, newColor): Changes the color of an individual label in the pointcloud object.
+    """
+
+    def __init__(self, name, points, domain=None, unitOfLength=None):
+        """
+        Initializes a pointcloud object.
+
+        Args:
+            name (str): The name of the point cloud.
+            points (numpy.ndarray): An (n,d) numpy array representing the points in the point cloud.
+            domain (numpy.ndarray, optional): An nDimensions by 2 numpy array specifying the domain min and max values in each dimension. If not provided, the domain is estimated based on the most extreme values of the points. Default is None.
+            unitOfLength (str, optional): The unit of length for the points. Default is None.
+        """
         self.name = name
-        self.points = points #todo ensure points are an (n,d) numpy array for d = 2 or 3
+        self.points = points
         self.nPoints = np.shape(points)[0]
-        self.dimension = np.shape(points)[1]       
+        self.dimension = np.shape(points)[1]
         self.labels = {}
         self.nLabels = 0
         self.nLabels_categorical = 0
         self.nLabels_continuous = 0
-        
         self.summaryStatistics = None
 
         if domain is None:
             # We estimate domain size by taking most extreme values and rounding up to nearest 1 unit
-            maxDomain = np.ceil(np.max(self.points,axis=0))
-            minDomain = np.floor(np.min(self.points,axis=0))
-            self.domain = np.stack((minDomain,maxDomain)).transpose()
+            maxDomain = np.ceil(np.max(self.points, axis=0))
+            minDomain = np.floor(np.min(self.points, axis=0))
+            self.domain = np.stack((minDomain, maxDomain)).transpose()
         else:
             self.domain = np.asarray(domain)
             if np.shape(self.domain)[0] != self.dimension:
@@ -43,37 +62,54 @@ class pointcloud:
             if np.shape(self.domain)[1] != 2:
                 raise RuntimeError('Specified domain should be nDimensions by 2, specifying domain min and max values in each dimension')
             for d in range(self.dimension):
-                if self.domain[d,0] >= self.domain[d,1]:
-                    raise RuntimeError(f'Specified domain minimum value in dimension {d} ({self.domain[d,0]}) must be lower than maximum value ({self.domain[d,1]})')
+                if self.domain[d, 0] >= self.domain[d, 1]:
+                    raise RuntimeError(f'Specified domain minimum value in dimension {d} ({self.domain[d, 0]}) must be lower than maximum value ({self.domain[d, 1]})')
         if self.dimension == 2:
-            v = [[self.domain[0,0],self.domain[1,0]],
-                 [self.domain[0,0],self.domain[1,1]],
-                 [self.domain[0,1],self.domain[1,1]],
-                 [self.domain[0,1],self.domain[1,0]]]
+            v = [[self.domain[0, 0], self.domain[1, 0]],
+                 [self.domain[0, 0], self.domain[1, 1]],
+                 [self.domain[0, 1], self.domain[1, 1]],
+                 [self.domain[0, 1], self.domain[1, 0]]]
             self.boundaryPolygon = Polygon(v)
-        self.domainVolume = np.prod(self.domain[:,1] - self.domain[:,0],axis=0)
+        self.domainVolume = np.prod(self.domain[:, 1] - self.domain[:, 0], axis=0)
         self.density = self.nPoints / self.domainVolume
-        
 
     def __str__(self):
+        """
+        Returns a string representation of the pointcloud object.
+
+        Returns:
+            str: A string representation of the pointcloud object.
+        """
         return f"Name: {self.name}, nPoints: {self.nPoints}"
 
-    def addLabels(self, labelName, labelType, labels,cmap=None):
+    def addLabels(self, labelName, labelType, labels, cmap=None):
+        """
+        Adds labels to the pointcloud object.
+
+        Args:
+            labelName (str): The name of the label.
+            labelType (str): The type of the label. Must be 'categorical' or 'continuous'.
+            labels (list): A list of labels. The length of the list must be equal to the number of points in the pointcloud.
+            cmap (str, optional): The colormap to use for categorical labels. Default is None, which uses the 'tab10' colormap.
+        
+        Raises:
+            ValueError: If the length of the labels list is not equal to the number of points in the pointcloud.
+            ValueError: If the labelType is not 'categorical' or 'continuous'.
+        """
         if self.nPoints != len(labels):
             raise ValueError(f"Expected a list of {self.nPoints} labels, received {len(labels)}")
-        if labelType in ['categorical','continuous']:
-            self.labels[labelName] = {'Type':labelType,
-                                        'labels':labels}
+        if labelType in ['categorical', 'continuous']:
+            self.labels[labelName] = {'Type': labelType, 'labels': labels}
             self.nLabels = self.nLabels + 1
-            
+
             if labelType == 'categorical':
                 self.nLabels_categorical = self.nLabels_categorical + 1
                 unique = np.unique(labels)
-                labelToInteger = {unique[v] : v for v in range(len(unique))}
+                labelToInteger = {unique[v]: v for v in range(len(unique))}
                 self.labels[labelName]['categories'] = unique
                 self.labels[labelName]['nCategories'] = len(unique)
                 self.labels[labelName]['labelToInteger'] = labelToInteger
-                self.labels[labelName]['integerToLabel'] = {labelToInteger[v] : v for v in labelToInteger.keys()}
+                self.labels[labelName]['integerToLabel'] = {labelToInteger[v]: v for v in labelToInteger.keys()}
                 self.labels[labelName]['numericalLabels'] = np.asarray([labelToInteger[labels[v]] for v in range(len(labels))])
                 if cmap is None:
                     # Use default colormap
@@ -81,7 +117,7 @@ class pointcloud:
                 self.labels[labelName]['integerToColor'] = {v: plt.cm.get_cmap(cmap)(v) for v in self.labels[labelName]['integerToLabel'].keys()}
                 colArray = np.asarray([v for v in self.labels[labelName]['integerToColor'].values()])
                 self.labels[labelName]['cmap'] = ListedColormap(colArray)
-                
+
             else:
                 self.nLabels_continuous = self.nLabels_continuous + 1
                 self.labels[labelName]['numericalLabels'] = np.asarray(labels)
@@ -90,6 +126,17 @@ class pointcloud:
             raise ValueError('labelType must be categorical or continuous')
 
     def changeIndividualLabelColor(self, labelName, labelToUpdate, newColor):
+        """
+        Changes the color of an individual label in the pointcloud object.
+
+        Args:
+            labelName (str): The name of the label.
+            labelToUpdate: The label to update.
+            newColor (list): A list of four values representing the new color in RGBA format.
+        
+        Raises:
+            AssertionError: If the length of newColor is not equal to 4.
+        """
         assert(len(newColor) == 4)
         labelIntegerValue = self.labels[labelName]['labelToInteger'][labelToUpdate]
         self.labels[labelName]['integerToColor'][labelIntegerValue] = newColor
@@ -101,11 +148,25 @@ def generatePointCloud(name, points,domain=None,unitOfLength=None):
     pc = pointcloud(name, points, domain, unitOfLength)
     return pc
 
-def visualisePointCloud(pc,labelForVisualisation=None,cmap=None,markerSize=None,vmin=None,vmax=None):
+def visualisePointCloud(pc, labelForVisualisation=None, cmap=None, markerSize=None, vmin=None, vmax=None):
+    """
+    Visualizes a point cloud in 2D.
+
+    Args:
+        pc (PointCloud): The point cloud object to visualize.
+        labelForVisualisation (str): The label to use for coloring the points. Default is None.
+        cmap (str or Colormap): The colormap to use for coloring the points. Default is None.
+        markerSize (int or float): The size of the markers. Default is None.
+        vmin (float): The minimum value for the colormap. Default is None.
+        vmax (float): The maximum value for the colormap. Default is None.
+
+    Returns:
+        tuple: A tuple containing the figure and axis objects of the plot.
+    """
     from matplotlib import colors
     if pc.dimension != 2:
         raise RuntimeError('Visualisation currently only possible in 2D')
-    if labelForVisualisation not in pc.labels.keys() and labelForVisualisation != None:
+    if labelForVisualisation not in pc.labels.keys() and labelForVisualisation is not None:
         raise ValueError('labelForVisualisation must be a label!')
 
     shuffleOrder = np.arange(len(pc.points))
@@ -114,13 +175,13 @@ def visualisePointCloud(pc,labelForVisualisation=None,cmap=None,markerSize=None,
     if markerSize is None:
         markerSize = 20
     else:
-        if isinstance(markerSize, (int,float)):
+        if isinstance(markerSize, (int, float)):
             if markerSize < 0:
                 raise ValueError('markerSize must be a positive number')
 
-    plt.figure(figsize=(24,18))
+    plt.figure(figsize=(24, 18))
     if labelForVisualisation is None:
-        plt.scatter(pc.points[shuffleOrder,0],pc.points[shuffleOrder,1],s=markerSize,cmap=cmap)
+        plt.scatter(pc.points[shuffleOrder, 0], pc.points[shuffleOrder, 1], s=markerSize, cmap=cmap)
     else:
         norm = None
         if cmap is None:
@@ -128,24 +189,42 @@ def visualisePointCloud(pc,labelForVisualisation=None,cmap=None,markerSize=None,
         labelType = pc.labels[labelForVisualisation]['Type']
         if labelType == 'categorical':
             nCategories = pc.labels[labelForVisualisation]['nCategories']
-            # if cmap is None:
-            #     cmap = pc.labels[labelForVisualisation]['cmap']
-            cmap = plt.cm.get_cmap(cmap,nCategories)
-            norm = colors.BoundaryNorm(np.arange(-0.5, nCategories+0.5, 1), cmap.N)
-        plt.scatter(pc.points[shuffleOrder,0],pc.points[shuffleOrder,1],c=pc.labels[labelForVisualisation]['numericalLabels'][shuffleOrder],s=markerSize,cmap=cmap,norm=norm,vmin=vmin,vmax=vmax)
+            cmap = plt.cm.get_cmap(cmap, nCategories)
+            norm = colors.BoundaryNorm(np.arange(-0.5, nCategories + 0.5, 1), cmap.N)
+        plt.scatter(pc.points[shuffleOrder, 0], pc.points[shuffleOrder, 1], c=pc.labels[labelForVisualisation]['numericalLabels'][shuffleOrder], s=markerSize, cmap=cmap, norm=norm, vmin=vmin, vmax=vmax)
     plt.gca().axis('equal')
     plt.xlim(pc.domain[0])
     plt.ylim(pc.domain[1])
-    if labelForVisualisation != None:
-        cbar=plt.colorbar(label=labelForVisualisation)
+    if labelForVisualisation is not None:
+        cbar = plt.colorbar(label=labelForVisualisation)
         if labelType == 'categorical':
             cbar.set_ticks(list(pc.labels[labelForVisualisation]['labelToInteger'].values()))
             cbar.set_ticklabels(list(pc.labels[labelForVisualisation]['labelToInteger'].keys()))
     plt.tight_layout()
     return plt.gcf(), plt.gca()
 
-def pairCorrelationFunction(pc,labelName,categoriesToPlot,maxR=0.5,annulusStep=0.025,annulusWidth=0.025):
-# First we check that the chosen label is categorical
+def pairCorrelationFunction(pc, labelName, categoriesToPlot, maxR=0.5, annulusStep=0.025, annulusWidth=0.025):
+    """
+    Calculate the pair correlation function (PCF) for a given label in a point cloud.
+
+    Args:
+        pc (PointCloud): The point cloud object containing the data.
+        labelName (str): The name of the label to calculate the PCF for.
+        categoriesToPlot (list): A list of two categories to compare in the PCF.
+        maxR (float, optional): The maximum radius to consider for the PCF. Defaults to 0.5.
+        annulusStep (float, optional): The step size for the annulus. Defaults to 0.025.
+        annulusWidth (float, optional): The width of each annulus. Defaults to 0.025.
+
+    Returns:
+        tuple: A tuple containing the radii, g values, and contributions of the PCF.
+
+    Raises:
+        RuntimeError: If the chosen label is not categorical.
+        RuntimeError: If the specified categories are not associated with the label.
+        RuntimeError: If no cells with the specified category are found within the PCF domain.
+
+    """
+    # First we check that the chosen label is categorical
     labelType = pc.labels[labelName]['Type']
     if labelType != 'categorical':
         raise RuntimeError(f'The label {labelName} is not a categorical label.')
@@ -157,28 +236,50 @@ def pairCorrelationFunction(pc,labelName,categoriesToPlot,maxR=0.5,annulusStep=0
     if labelB not in categories:
         raise RuntimeError(f'The category {labelB} is not associated with the label {labelName}.')
 
-    
     i_A = pc.labels[labelName]['labelToInteger'][labelA]
     i_B = pc.labels[labelName]['labelToInteger'][labelB]
-    
+
     # Points to include A: All points within pc.domain
     # Points to include B: All points within pc.domain
-    p_A = pc.points[pc.labels[labelName]['numericalLabels'] == i_A,:]
-    p_B = pc.points[pc.labels[labelName]['numericalLabels'] == i_B,:]
+    p_A = pc.points[pc.labels[labelName]['numericalLabels'] == i_A, :]
+    p_B = pc.points[pc.labels[labelName]['numericalLabels'] == i_B, :]
     if np.shape(p_A)[0] == 0:
         raise RuntimeError(f'No cells with {labelA} found within PCF domain')
     if np.shape(p_B)[0] == 0:
         raise RuntimeError(f'No cells with {labelB} found within PCF domain')
     # Get annulus areas (within domain) around p_A
-    areas_A = getAnnulusAreasAroundPoints(p_A, maxR, annulusStep,annulusWidth, pc.domain)
-    density_B = np.shape(p_B)[0]/pc.domainVolume
-    
+    areas_A = getAnnulusAreasAroundPoints(p_A, maxR, annulusStep, annulusWidth, pc.domain)
+    density_B = np.shape(p_B)[0] / pc.domainVolume
+
     distances_AtoB = cdist(p_A, p_B, metric='euclidean')
     radii, g, contributions = crossPCF(distances_AtoB, areas_A, density_B, maxR, annulusStep, annulusWidth)
 
     return radii, g, contributions
 
 def weightedPairCorrelationFunction(pc,categoricalLabelName,categoricalLabelToPlot,continuousLabelName,maxR=0.5,annulusWidth=0.025,annulusStep=0.025,targetP=None,weightingFunction=None):
+    """
+    Calculate the weighted pair correlation function (wPCF) for a given point cloud.
+
+    Parameters:
+        pc (PointCloud): The point cloud object containing the data.
+        categoricalLabelName (str): The name of the categorical label.
+        categoricalLabelToPlot (str): The specific category to plot.
+        continuousLabelName (str): The name of the continuous label.
+        maxR (float, optional): The maximum radius for the pair correlation function. Defaults to 0.5.
+        annulusWidth (float, optional): The width of each annulus. Defaults to 0.025.
+        annulusStep (float, optional): The step size between annuli. Defaults to 0.025.
+        targetP (array-like, optional): The target values for the continuous label. Defaults to None.
+        weightingFunction (function, optional): The weighting function to apply. Defaults to None.
+
+    Returns:
+        PCF_radii_lower (ndarray): The lower radii values for each annulus.
+        targetP (ndarray): The target values for the continuous label.
+        wPCF (ndarray): The weighted pair correlation function values.
+
+    Raises:
+        RuntimeError: If the chosen label is not categorical or continuous, or if the specified category is not associated with the label.
+    """
+
     # First we check that the chosen label is categorical
     labelTypeA = pc.labels[categoricalLabelName]['Type']
     if labelTypeA != 'categorical':
@@ -241,6 +342,22 @@ def weightedPairCorrelationFunction(pc,categoricalLabelName,categoricalLabelToPl
     return PCF_radii_lower, targetP, wPCF
 
 def neighbourhoodCorrelationFunction(pc,labelName,categoriesToPlot,maxR=0.5):
+    """
+    Calculate the neighbourhood correlation function for a 2D point cloud based on categorical labels.
+    This function is currently written to compare 3 categories. Assumes n=3. 
+    Args:
+        pc (PointCloud): The 2D point cloud.
+        labelName (str): The name of the categorical label.
+        categoriesToPlot (list): The list of categories to plot.
+        maxR (float, optional): The maximum radius for the smallest enclosing circle. Defaults to 0.5.
+
+    Returns:
+        tuple: A tuple containing two lists. The first list contains the circles representing the smallest enclosing circles for each triplet of points. The second list contains the triplets of points.
+
+    Raises:
+        NotImplementedError: If the point cloud is not 2D.
+        RuntimeError: If the label is not a categorical label or if the specified categories are not associated with the label.
+    """
 # First we check that the chosen label is categorical
     if pc.dimension != 2:
         raise NotImplementedError('Currently only implemented for 2D point clouds')
@@ -297,21 +414,35 @@ def neighbourhoodCorrelationFunction(pc,labelName,categoriesToPlot,maxR=0.5):
 
     return circles, triplets
 
-def plotWeightedPCF(radii,targetP,wPCF,vmin=0,vmax=8,ax=None,cm='plasma'):
+def plotWeightedPCF(radii, targetP, wPCF, vmin=0, vmax=8, ax=None, cm='plasma'):
+    """
+    Plot the weighted pair correlation function.
+
+    Parameters:
+    - radii (array-like): The radii values.
+    - targetP (array-like): The targetP values.
+    - wPCF (array-like): The weighted pair correlation function values.
+    - vmin (float, optional): The minimum value for the colorbar. Default is 0.
+    - vmax (float, optional): The maximum value for the colorbar. Default is 8.
+    - ax (matplotlib.axes.Axes, optional): The axes object to plot on. If None, a new figure and axes will be created. Default is None.
+    - cm (str or colormap, optional): The colormap to use. Default is 'plasma'.
+
+    Returns:
+    - fig (matplotlib.figure.Figure): The figure object.
+    - ax (matplotlib.axes.Axes): The axes object.
+    """
     equalColormap = True
     
     if ax == None:
-        plt.figure(figsize=(18,18))
+        plt.figure(figsize=(18, 18))
         ax = plt.gca()
         fig = plt.gcf()
-    if equalColormap:
-        # sample the colormaps that you want to use. Use 128 from each so we get 256
-        # colors in total
     
-        one = 1/vmax
+    if equalColormap:
+        # sample the colormaps that you want to use. Use 128 from each so we get 256 colors in total
+        one = 1 / vmax
         nCols = 1000
-        threshold = one*nCols
-        #print(threshold)
+        threshold = one * nCols
         colors1 = plt.cm.Greens(np.linspace(0, 1, round(threshold)))
         map = plt.cm.get_cmap(cm)
         colors2 = map(np.linspace(0, 1, nCols - round(threshold)))
@@ -319,23 +450,41 @@ def plotWeightedPCF(radii,targetP,wPCF,vmin=0,vmax=8,ax=None,cm='plasma'):
         # combine them and build a new colormap
         colors = np.vstack((colors1, colors2))
         cmap = mcolors.LinearSegmentedColormap.from_list('my_colormap', colors)
-        
     else:
         cmap = 'inferno'
-    ax.imshow(wPCF.transpose(),origin='lower',extent=[0,1,0,1],cmap=cmap,vmin=vmin,vmax=vmax)
+    
+    ax.imshow(wPCF.transpose(), origin='lower', extent=[0, 1, 0, 1], cmap=cmap, vmin=vmin, vmax=vmax)
     
     ax.set_xlabel('Radius $(r)$')
-    tickProps = [0,0.25,0.5,0.75,1]
+    tickProps = [0, 0.25, 0.5, 0.75, 1]
     ax.set_xticks(tickProps)
-    ax.set_xticklabels([v*(radii[-1]) for v in tickProps])
+    ax.set_xticklabels([v * (radii[-1]) for v in tickProps])
     ax.set_ylabel('$P$')
-    tickProps = [0,0.25,0.5,0.75,1]
+    tickProps = [0, 0.25, 0.5, 0.75, 1]
     ax.set_yticks(tickProps)
-    ax.set_yticklabels([v*(targetP[-1]) for v in tickProps])
+    ax.set_yticklabels([v * (targetP[-1]) for v in tickProps])
+    
     return fig, ax
 
 def topographicalCorrelationMap(pc,labelNameA,labelA,labelNameB,labelB,radiusOfInterest=0.1,maxCorrelationThreshold=5.0,kernelRadius=150,kernelSigma=50,visualiseStages=False):
-    
+    """
+    Calculates the topographical correlation map between two categorical labels in a point cloud.
+
+    Parameters:
+    - pc (PointCloud): The point cloud object containing the data.
+    - labelNameA (str): The name of the first categorical label.
+    - labelA (str): The category of the first label to consider.
+    - labelNameB (str): The name of the second categorical label.
+    - labelB (str): The category of the second label to consider.
+    - radiusOfInterest (float): The radius of interest around each point in labelA.
+    - maxCorrelationThreshold (float): The maximum correlation threshold.
+    - kernelRadius (int): The radius of the kernel used for smoothing the correlation map.
+    - kernelSigma (int): The sigma value used for smoothing the correlation map.
+    - visualiseStages (bool): Whether to visualize intermediate stages of the calculation.
+
+    Returns:
+    - topographicalCorrelationMap (ndarray): The topographical correlation map between the two labels.
+    """    
     for labelName in [labelNameA,labelNameB]:
         labelType = pc.labels[labelName]['Type']
         if labelType != 'categorical':
@@ -424,26 +573,33 @@ def topographicalCorrelationMap(pc,labelNameA,labelA,labelNameB,labelB,radiusOfI
     
     return topographicalCorrelationMap.T
 
-def plotTopographicalCorrelationMap(pc,topographicalCorrelationMap,ax=None,cmap='RdBu_r',colorbarLimit=None):
+def plotTopographicalCorrelationMap(pc, topographicalCorrelationMap, ax=None, cmap='RdBu_r', colorbarLimit=None):
+    """
+    Plots a topographical correlation map.
+
+    Parameters:
+    pc (object): The pc object.
+    topographicalCorrelationMap (array-like): The topographical correlation map.
+    ax (object, optional): The matplotlib axes object to plot on. If not provided, a new figure and axes will be created.
+    cmap (str, optional): The colormap to use. Default is 'RdBu_r'.
+    colorbarLimit (int, optional): The limit for the colorbar. If not provided, it will be calculated based on the minimum and maximum values of the topographical correlation map.
+
+    Returns:
+    tuple: A tuple containing the matplotlib figure and axes objects.
+
+    """
     from mpl_toolkits.axes_grid1 import make_axes_locatable
     if ax == None:
-        plt.figure(figsize=(18,18))
+        plt.figure(figsize=(18, 18))
         ax = plt.gca()
     if colorbarLimit == None:
-        colorbarLimit = int(np.ceil(np.max([topographicalCorrelationMap.min(),topographicalCorrelationMap.max()])))
-    extent = [pc.domain[0,0],pc.domain[0,1],pc.domain[1,0],pc.domain[1,1]]
-    im = ax.imshow(topographicalCorrelationMap,origin='lower',cmap=cmap,extent=extent,vmin=-colorbarLimit,vmax=colorbarLimit)
+        colorbarLimit = int(np.ceil(np.max([topographicalCorrelationMap.min(), topographicalCorrelationMap.max()])))
+    extent = [pc.domain[0, 0], pc.domain[0, 1], pc.domain[1, 0], pc.domain[1, 1]]
+    im = ax.imshow(topographicalCorrelationMap, origin='lower', cmap=cmap, extent=extent, vmin=-colorbarLimit, vmax=colorbarLimit)
     divider = make_axes_locatable(ax)
     cax = divider.append_axes('right', size='5%', pad=0.05)
     plt.gcf().colorbar(im, cax=cax, orientation='vertical')
     return plt.gcf(), plt.gca()
-
-
-
-
-
-
-
 
 
 
