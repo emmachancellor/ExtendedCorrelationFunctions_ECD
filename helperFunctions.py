@@ -114,7 +114,7 @@ class pointcloud:
                 if cmap is None:
                     # Use default colormap
                     cmap = 'tab10'
-                self.labels[labelName]['integerToColor'] = {v: plt.cm.get_cmap(cmap)(v) for v in self.labels[labelName]['integerToLabel'].keys()}
+                self.labels[labelName]['integerToColor'] = {v: plt.get_cmap(cmap)(v) for v in self.labels[labelName]['integerToLabel'].keys()}
                 colArray = np.asarray([v for v in self.labels[labelName]['integerToColor'].values()])
                 self.labels[labelName]['cmap'] = ListedColormap(colArray)
 
@@ -189,7 +189,7 @@ def visualisePointCloud(pc, labelForVisualisation=None, cmap=None, markerSize=No
         labelType = pc.labels[labelForVisualisation]['Type']
         if labelType == 'categorical':
             nCategories = pc.labels[labelForVisualisation]['nCategories']
-            cmap = plt.cm.get_cmap(cmap, nCategories)
+            cmap = plt.get_cmap(cmap, nCategories)
             norm = colors.BoundaryNorm(np.arange(-0.5, nCategories + 0.5, 1), cmap.N)
         plt.scatter(pc.points[shuffleOrder, 0], pc.points[shuffleOrder, 1], c=pc.labels[labelForVisualisation]['numericalLabels'][shuffleOrder], s=markerSize, cmap=cmap, norm=norm, vmin=vmin, vmax=vmax)
     plt.gca().axis('equal')
