@@ -239,16 +239,18 @@ def generate_csr_grid(pc_df, typea, typeb):
     num_points = pc_df['Celltype'].value_counts()
     num_points_a, num_points_b = num_points[typea], num_points[typeb]
 
-    # Get the width and height of the ROI
-    width, height = pc_df['x'].max(), pc_df['y'].max()
+    # Get the bounds of the ROI
+    x_min, x_max = pc_df['x'].min(), pc_df['x'].max()
+    y_min, y_max = pc_df['y'].min(), pc_df['y'].max()
 
-    # Function to generate random points for a given type
+    # Function to generate random points for a given type within the bounds
     def generate_points(num_points, celltype):
-        points = np.random.rand(num_points, 2) * [width, height]
+        x_points = np.random.uniform(x_min, x_max, num_points)
+        y_points = np.random.uniform(y_min, y_max, num_points)
+        points = np.column_stack((x_points, y_points))
         return pd.DataFrame(points, columns=['x', 'y']).assign(Celltype=celltype)
 
     # Generate CSR for both types and concatenate results
-    csr_df = pd.DataFrame()
     csr_df = pd.concat([generate_points(num_points_a, typea), 
                         generate_points(num_points_b, typeb)], 
                     ignore_index=True)
