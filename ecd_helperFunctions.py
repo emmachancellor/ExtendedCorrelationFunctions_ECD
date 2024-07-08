@@ -105,6 +105,24 @@ def zscore_norm(df, markers):
     df[markers] = df[markers].apply(lambda x: (x - x.mean()) / x.std(), axis=0)
     return df
 
+def save_grid_h5(grid_df_dict, save_path):
+    """
+    Save a dictionary of grid dataframes to an HDF5 file.
+
+    Parameters:
+        grid_df_dict (dict): A dictionary containing grid dataframes. The keys should be tuples representing the grid coordinates (x, y), and the values should be the corresponding dataframes.
+        save_path (str): The path to save the HDF5 file.
+
+    Returns:
+        None
+    """
+    with pd.HDFStore(save_path, 'w') as store:
+        for (x, y), df in grid_df_dict.items():
+            # Use a key format that identifies each dataframe uniquely
+            key = f'grid_{x}_{y}'
+            store.put(key, df)
+    return
+
 def create_tile_rois(df, 
                      tile_size=1000, 
                      x_coord='X_centroid',
@@ -145,11 +163,7 @@ def create_tile_rois(df,
             if not save_hdf5 or not save_hdf5.endswith('.h5'):
                 raise ValueError("Invalid save_hdf5 path. Path must be a valid string ending in '.h5'.")
             # Save each dataframe to the HDF5 file
-            with pd.HDFStore(save_hdf5, 'w') as store:
-                for (x, y), df in grid_dataframes.items():
-                    # Use a key format that identifies each dataframe uniquely
-                    key = f'grid_{x}_{y}'
-                    store.put(key, df)
+            save_grid_h5(grid_dataframes, save_hdf5)
     return grid_dataframes
 
 def load_tile_rois(hdf5_path):
@@ -255,3 +269,45 @@ def generate_csr_grid(pc_df, typea, typeb):
                         generate_points(num_points_b, typeb)], 
                     ignore_index=True)
     return csr_df
+
+def save_tcm_plot(df, save_path=None):
+    """
+    Save a plot of the given DataFrame using a specific colormap and colorbar.
+
+    Parameters:
+        df (pandas.DataFrame): The DataFrame to be plotted.
+        save_path (str, optional): The file path to save the plot. If not provided, the plot will be displayed instead.
+
+    Returns:
+        None
+    """
+    plt.figure(figsize=(20,20))
+    l = int(np.ceil(np.max(np.abs([df.min(),df.max()]))))
+    plt.imshow(df,cmap='RdBu_r',vmin=-l,vmax=l,origin='lower')
+    plt.colorbar(label='$\Gamma_{C_1 C_2}(r=100)$')
+    ax = plt.gca()
+    ax.grid(False)
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+    return
+
+def generate_pointcloud(pc_df,
+                        sample_grid_name):
+    """
+    Generate a point cloud object from a DataFrame containing x, y coordinates and cell types.
+
+    Args:
+        pc_df (pandas.DataFrame): DataFrame containing x, y coordinates and cell types.
+        sample_grid_name (str): Name of the sample grid.
+
+    Returns:
+        PointCloud: Point cloud object with x, y coordinates and cell types.
+
+    """
+    points = np.asarray([pc_df['x'], pc_df['y']]).transpose()
+
+    # Convert pc_df['Celltype'] to a list
+    celltype_list = pc_df['Celltype'].tolist()
+
+    pc = generatePointCloud(sample_grid_name, points)
+    pc.addLabels('Celltype', 'categorical', celltype_list, cmap='tab10')
