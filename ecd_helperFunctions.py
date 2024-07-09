@@ -331,7 +331,7 @@ def compare_tcm(grid_files,
     Allows one to save the results of a Kolmogorov-Smirnov test comparing the TCMs.
 
     Parameters:
-        grid_files (str): The path to the grid dataset file.
+        grid_files (list): List of paths to the grid dataset files.
         markers (list): The list of marker names to consider.
         keep_cols (list): The list of column names to keep in the grid dataset.
         labels (list): The list of labels for the two cell types to compare.
@@ -377,8 +377,8 @@ def compare_tcm(grid_files,
                 continue
             typea_count = pc_df['Celltype'].value_counts()[typea]
             typeb_count = pc_df['Celltype'].value_counts()[typeb]
-            print(f"Number of times {typea} occurs in the 'Celltype' column of pc_df: {typea_count}")
-            print(f"Number of times {typeb} occurs in the 'Celltype' column of pc_df: {typeb_count}")
+            print(f"Number {typea} in {grid_name}: {typea_count}")
+            print(f"Number of {typeb} in {grid_name}: {typeb_count} \n")
 
             # Generate PointCloud object for TCM
             pc = generate_pointcloud(pc_df, sample_grid_name)
@@ -396,7 +396,7 @@ def compare_tcm(grid_files,
                                             **kwargs)
             # Add TCM to dictionary
             if save_tcm_path is not None:
-                tcm_grids[grid_name] = tcm
+                tcm_grids[grid_string] = tcm
 
             # Save TCM plot
             if save_tcm_plot_path is not None:
@@ -429,8 +429,8 @@ def compare_tcm(grid_files,
                 save_tcm_plot(csr_tcm, save_path)
 
             # Add CSR TCM to dictionary to save later
-            if csr_tcm_grids is not None:
-                csr_tcm_grids[grid_name] = csr_tcm
+            if save_csr_tcm_path is not None:
+                csr_tcm_grids[grid_string] = csr_tcm
 
             # Flatten the TCMs for comparison
             csr_collapsed_tcm = csr_tcm.flatten()
@@ -438,16 +438,17 @@ def compare_tcm(grid_files,
 
             # Perform a Kolmogorov-Smirnov test to compare the distributions
             ks_statistic, p_value = ks_2samp(csr_collapsed_tcm, collapsed_tcm)
-            ks_test_results[grid_name] = (ks_statistic, p_value)
+            p_value_scientific = f"{p_value:.2e}"
+            ks_test_results[grid_name] = (ks_statistic, p_value_scientific)
             
         # Save .h5 files for reproducibility
         if save_csr_tcm_path is not None:
-            save_path = save_csr_tcm_path + f'{sample_name}_CSR_TCM.h5'
-            save_grid_h5(csr_tcm_grids, save_path)
+            save_path = save_csr_tcm_path + f'{sample_name}_CSR_TCM.npz'
+            np.savez(save_path, **csr_tcm_grids)
 
         if save_tcm_path is not None:
-            save_path = save_tcm_path + f'{sample_name}_TCM.h5'
-            save_grid_h5(tcm_grids, save_path)
+            save_path = save_tcm_path + f'{sample_name}_TCM.npz'
+            np.savez(save_path, **tcm_grids)
         
         if save_ks_results_path is not None:
             # Extract keys and values
