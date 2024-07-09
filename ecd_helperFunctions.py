@@ -10,7 +10,7 @@ from functools import partial
 from helperFunctions import *
 from smallestEnclosingCircle import make_circle
 from sklearn.mixture import GaussianMixture
-
+from scipy.stats import ks_2samp
 
 def gmm_classify(data, 
                  n_components=2, 
@@ -311,3 +311,155 @@ def generate_pointcloud(pc_df,
 
     pc = generatePointCloud(sample_grid_name, points)
     pc.addLabels('Celltype', 'categorical', celltype_list, cmap='tab10')
+    return pc
+
+def compare_tcm(grid_files, 
+                markers,
+                keep_cols,
+                labels,
+                visualiseStages=False,
+                save_tcm_plot_path=None,
+                save_tcm_path=None,
+                save_csr_plot_path=None,
+                rename_cols_dict=None,
+                save_csr_tcm_path=None,
+                save_ks_results_path=None,
+                plot_point_cloud=False,
+                **kwargs):
+    """
+    Compare the topographical correlation maps (TCMs) between two cell types in a grid dataset.
+    Allows one to save the results of a Kolmogorov-Smirnov test comparing the TCMs.
+
+    Parameters:
+        grid_files (str): The path to the grid dataset file.
+        markers (list): The list of marker names to consider.
+        keep_cols (list): The list of column names to keep in the grid dataset.
+        labels (list): The list of labels for the two cell types to compare.
+        visualiseStages (bool, optional): Whether to visualize the stages of the TCM calculation. Defaults to False.
+        save_tcm_plot_path (str, optional): The path to a directory to save the TCM plots. Defaults to None.
+        save_tcm_path (str, optional): The path to a directory to save the TCM grids. Defaults to None.
+        save_csr_plot_path (str, optional): The path to a directory to save the CSR TCM plots. Defaults to None.
+        save_ks_results_path (str, optional): The path to a directory to save the KS test results. Defaults to None.
+        rename_cols_dict (dict, optional): A dictionary to rename the column names in the grid dataset. Defaults to None.
+        save_csr_tcm_path (str, optional): The path to a directory to save the CSR TCM grids. Defaults to None.
+        plot_point_cloud (bool, optional): Whether to plot the point cloud. Defaults to False.
+        **kwargs: Additional keyword arguments for the TCM calculation.
+
+    Returns:
+        None
+    """
+    for grid_file in grid_files:
+        plt.rcParams['font.family'] = 'DejaVu Sans'
+        file_name = grid_file.split('/')[-1]
+        sample_name = file_name.split('_')[0]
+        # Load grid data
+        grid_dataframes = load_tile_rois(grid_file)
+        print(f'Total number of grids in {sample_name}:', len(grid_dataframes))
+        csr_tcm_grids = {}
+        tcm_grids = {}
+        ks_test_results = {}
+        typea = labels[1]
+        typeb = labels[2]
+        for grid_name, grid in grid_dataframes.items():
+            grid_string = '_'.join(str(x) for x in grid_name)
+            sample_grid_name = f'{sample_name}_{grid_string}'
+            # Format data for TCM
+            pc_df = generate_binary_pointcloud(grid,
+                                            markers,
+                                            keep_cols,
+                                            labels,
+                                            rename_cols_dict=rename_cols_dict)
+            # Get rid of rows of cells that have neither marker
+            pc_df = pc_df[pc_df['Celltype_asNumeric'] != 0]
+
+            # Ensure that both cell types are present in the given grid:
+            if typeb not in pc_df['Celltype'].unique() or typea not in pc_df['Celltype'].unique():
+                continue
+            typea_count = pc_df['Celltype'].value_counts()[typea]
+            typeb_count = pc_df['Celltype'].value_counts()[typeb]
+            print(f"Number of times {typea} occurs in the 'Celltype' column of pc_df: {typea_count}")
+            print(f"Number of times {typeb} occurs in the 'Celltype' column of pc_df: {typeb_count}")
+
+            # Generate PointCloud object for TCM
+            pc = generate_pointcloud(pc_df, sample_grid_name)
+
+            if plot_point_cloud is True:
+                visualisePointCloud(pc, 'Celltype', markerSize=100)
+
+            # Calculate TCM on tissue data
+            tcm = topographicalCorrelationMap(pc, 'Celltype', typea, 'Celltype', typeb, 
+                                            radiusOfInterest=100, 
+                                            maxCorrelationThreshold=5.0, 
+                                            kernelRadius=150, 
+                                            kernelSigma=50, 
+                                            visualiseStages=visualiseStages,
+                                            **kwargs)
+            # Add TCM to dictionary
+            if save_tcm_path is not None:
+                tcm_grids[grid_name] = tcm
+
+            # Save TCM plot
+            if save_tcm_plot_path is not None:
+                directory_path = save_tcm_plot_path + sample_name 
+                if not os.path.exists(directory_path):
+                    os.makedirs(directory_path)
+                save_path = directory_path + '/' + f'TCM_{grid_string}.png'
+                save_tcm_plot(tcm, save_path)
+
+            # Generate CSR grid based on the tissue grid
+            csr_df = generate_csr_grid(pc_df, typea, typeb)
+            
+            # Generate PointCloud object for CSR TCM
+            csr_pc = generate_pointcloud(csr_df, f'{sample_grid_name}_CSR')
+
+            # Calculate TCM on the CSR dataset
+            csr_tcm = topographicalCorrelationMap(csr_pc, 'Celltype', typea, 'Celltype', typeb, 
+                                                radiusOfInterest=100, 
+                                                maxCorrelationThreshold=5.0, 
+                                                kernelRadius=150, 
+                                                kernelSigma=50, 
+                                                visualiseStages=visualiseStages,
+                                                **kwargs)
+            # Save CSR TCM plot
+            if save_csr_plot_path is not None:
+                directory_path = save_csr_plot_path + sample_name
+                if not os.path.exists(directory_path):
+                    os.makedirs(directory_path)
+                save_path = directory_path + '/' + f'CSR_TCM_{grid_string}.png'
+                save_tcm_plot(csr_tcm, save_path)
+
+            # Add CSR TCM to dictionary to save later
+            if csr_tcm_grids is not None:
+                csr_tcm_grids[grid_name] = csr_tcm
+
+            # Flatten the TCMs for comparison
+            csr_collapsed_tcm = csr_tcm.flatten()
+            collapsed_tcm = tcm.flatten()
+
+            # Perform a Kolmogorov-Smirnov test to compare the distributions
+            ks_statistic, p_value = ks_2samp(csr_collapsed_tcm, collapsed_tcm)
+            ks_test_results[grid_name] = (ks_statistic, p_value)
+            
+        # Save .h5 files for reproducibility
+        if save_csr_tcm_path is not None:
+            save_path = save_csr_tcm_path + f'{sample_name}_CSR_TCM.h5'
+            save_grid_h5(csr_tcm_grids, save_path)
+
+        if save_tcm_path is not None:
+            save_path = save_tcm_path + f'{sample_name}_TCM.h5'
+            save_grid_h5(tcm_grids, save_path)
+        
+        if save_ks_results_path is not None:
+            # Extract keys and values
+            keys = list(ks_test_results.keys())
+            values = list(ks_test_results.values())
+        
+            # Create DataFrame
+            df = pd.DataFrame(values, columns=['ks_stat', 'p_value'])
+            df.insert(0, 'grid_location', keys)
+
+            # Save DataFrame as .csv
+            results_path = save_ks_results_path + f'{sample_name}_KS_results.csv'
+            df.to_csv(results_path, index=False)
+
+    return
