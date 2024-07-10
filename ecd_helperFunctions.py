@@ -6,12 +6,16 @@ import os
 import pickle
 import random
 import time
+import logging
 from functools import partial
 from helperFunctions import *
 from smallestEnclosingCircle import make_circle
 from sklearn.mixture import GaussianMixture
 from scipy.stats import ks_2samp
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def gmm_classify(data, 
                  n_components=2, 
@@ -456,14 +460,26 @@ def compare_tcm(grid_file,
 
         # Perform a Kolmogorov-Smirnov test to compare the distributions
         # Whole distribution
-        ks_statistic, p_value = ks_2samp(csr_collapsed_tcm, collapsed_tcm)
-        p_value_scientific = f"{p_value:.2e}"
+        if len(csr_collapsed_tcm) > 0 and len(collapsed_tcm) > 0:
+            ks_statistic, p_value = ks_2samp(csr_collapsed_tcm, collapsed_tcm)
+            p_value_scientific = f"{p_value:.2e}"
+        else:
+            ks_statistic = None
+            p_value_scientific = None
         # Positive values
-        ks_statistic_pos, p_value_pos = ks_2samp(pos_csr_collapsed_tcm, pos_collapsed_tcm)
-        p_value_pos_scientific = f"{p_value_pos:.2e}"
+        if len(pos_csr_collapsed_tcm) > 0 and len(pos_collapsed_tcm) > 0:
+            ks_statistic_pos, p_value_pos = ks_2samp(pos_csr_collapsed_tcm, pos_collapsed_tcm)
+            p_value_pos_scientific = f"{p_value_pos:.2e}"
+        else: 
+            ks_statistic_pos = None
+            p_value_pos_scientific = None
         # Negative values
-        ks_statistic_neg, p_value_neg = ks_2samp(neg_csr_collapsed_tcm, neg_collapsed_tcm)
-        p_value_neg_scientific = f"{p_value_neg:.2e}"
+        if len(neg_csr_collapsed_tcm) > 0 and len(neg_collapsed_tcm) > 0:
+            ks_statistic_neg, p_value_neg = ks_2samp(neg_csr_collapsed_tcm, neg_collapsed_tcm)
+            p_value_neg_scientific = f"{p_value_neg:.2e}"
+        else:
+            ks_statistic_neg = None
+            p_value_neg_scientific = None
 
         ks_test_results[grid_name] = (ks_statistic, p_value_scientific,
                                         ks_statistic_pos, p_value_pos_scientific,
@@ -535,5 +551,13 @@ def multithread_compare_tcm(grid_files,
                                    save_tcm_plot_path, save_tcm_path, save_csr_plot_path, rename_cols_dict, 
                                    save_csr_tcm_path, save_ks_results_path, plot_point_cloud, **kwargs) 
                    for grid_file in grid_files]
+    
+    for future in as_completed(futures):
+        try:
+            result = future.result()
+            logging.info(f"Task completed with result: {result}")
+        except Exception as e:
+            logging.error(f"Task generated an exception: {e}")
+
     return
 
