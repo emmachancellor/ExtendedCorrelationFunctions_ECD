@@ -227,6 +227,7 @@ def generate_binary_pointcloud(df,
     df = df[keep_cols + markers]
 
     # Ensure that cells are only called as one cell type (remove redundant rows)
+    # If marker 1 and marker 2 are both positive, set marker 2 to 0
     if markers is not None:
         if all(col in df.columns for col in markers):
             mask = df[markers[0]] == df[markers[1]]
