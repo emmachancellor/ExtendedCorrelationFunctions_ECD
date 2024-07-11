@@ -565,7 +565,8 @@ def rank_and_calculate_distance(ks_results_dir,
                                 grid_files,
                                 compare_n = 20,
                                 ks_stat='ks_stat',
-                                save_dir=None):
+                                save_dir=None,
+                                log_scale_ks=False):
     """
     Ranks and calculates distance for the top results based on the KS statistic.
 
@@ -615,9 +616,89 @@ def rank_and_calculate_distance(ks_results_dir,
                     # Add the centroid values to top_ks_results
                     top_ks_results.at[index, 'X_centroid'] = x_centroid
                     top_ks_results.at[index, 'Y_centroid'] = y_centroid
+            
+            # Calculate the distance from the previous row
+            distances = [0]  # First row has a distance of 0
+            for i in range(1, len(top_ks_results)):
+                x1 = top_ks_results.iloc[i]['X_centroid']
+                y1 = top_ks_results.iloc[i]['Y_centroid']
+                x2 = top_ks_results.iloc[i - 1]['X_centroid']
+                y2 = top_ks_results.iloc[i - 1]['Y_centroid']
+                
+                # Check for None and set to 0 if necessary
+                if x1 is None or y1 is None or x2 is None or y2 is None:
+                    distances.append(0)
+                    continue
 
-            if save_dir is not None:
+                x_diff = x1 - x2
+                y_diff = y1 - y2
+                distance = np.sqrt(x_diff**2 + y_diff**2)
+                distances.append(distance)
+            top_ks_results['distance_between_grids'] = distances
+
+            if log_scale_ks is True:
+                new_col = 'log_' + ks_stat
+                top_ks_results[new_col] = np.log(top_ks_results[ks_stat]) * -1
+            if save_dir is not None :
+                if not os.path.exists(save_dir):
+                    os.makedirs(save_dir)
                 top_ks_results.to_csv(os.path.join(save_dir, ks_sample_name + '_top_ks_results.csv'))
             ks_rank_grid_dict[ks_sample_name] = top_ks_results
     return ks_rank_grid_dict
+
+def combine_clinical_and_tcm(clinical_data_file,
+                             results_directory,
+                             save_path,
+                             markers=None,
+                             ks_stat='log_ks_stat'):
+    
+    clinical_data = pd.read_csv(clinical_data_file)
+    
+    # Ensure the columns exist in the DataFrame
+    for i in range(1, 21):
+        col_name = f'ks_grid_{i}_{markers}'
+        if col_name not in clinical_data.columns:
+            clinical_data[col_name] = None
+
+    for i in range(1, 20):
+        col_name = f'distance_{i}_{markers}'
+        if col_name not in clinical_data.columns:
+            clinical_data[col_name] = None
+
+    for file in os.listdir(results_directory):
+        if file.endswith('.csv'):
+            tcm_data = pd.read_csv(os.path.join(results_directory, file))
+            tcm_data = tcm_data[['distance_between_grids', 'log_ks_stat']]
+            tcm_data['Specimen_ID'] = file[2:5]
+
+            # Extract the log_ks_stat column from tcm_data
+            tcm_ks_stat = tcm_data[ks_stat].astype(str).str.split(',')
+            distance = tcm_data['distance_between_grids'].astype(str).str.split(',')
+
+            # Convert split series to lists
+            tcm_ks_stat_list = tcm_ks_stat.tolist()
+            distance_list = distance.tolist()
+
+            # Find the row in clinical_data with the matching Specimen_ID
+            specimen_ID = file[2:5]
+            clinical_row_index = clinical_data[clinical_data['Specimen_ID'] == specimen_ID].index
+            # Verify that clinical_row_index is not empty and is a valid index
+            if clinical_row_index.empty:
+                raise ValueError(f"Specimen_ID {specimen_ID} not found in clinical data")
+            
+            clinical_row_index = clinical_row_index[0]
+
+            # Fill in the ks_grid_1 to ks_grid_20 values in clinical_data
+            for i in range(1, 21):
+                if i-1 < len(tcm_ks_stat_list):
+                    value = tcm_ks_stat_list[i-1][0] if len(tcm_ks_stat_list[i-1]) > 0 else None
+                    clinical_data.at[clinical_row_index, f'ks_grid_{i}_{markers}'] = float(value) if value else None
+            for i in range(1, 20):
+                if i-1 < len(distance_list):
+                    value = distance_list[i-1][0] if len(distance_list[i-1]) > 0 else None
+                    clinical_data.at[clinical_row_index, f'distance_{i}_{markers}'] = float(value) if value else None
+
+    clinical_data.to_csv(save_path, index=False)
+    return
+
 
