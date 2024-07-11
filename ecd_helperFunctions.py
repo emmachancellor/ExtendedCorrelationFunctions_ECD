@@ -559,6 +559,65 @@ def multithread_compare_tcm(grid_files,
             logging.info(f"Task completed with result: {result}")
         except Exception as e:
             logging.error(f"Task generated an exception: {e}")
-
     return
+
+def rank_and_calculate_distance(ks_results_dir, 
+                                grid_files,
+                                compare_n = 20,
+                                ks_stat='ks_stat',
+                                save_dir=None):
+    """
+    Ranks and calculates distance for the top results based on the KS statistic.
+
+    Parameters:
+    - ks_results_dir (str): The directory path where the KS results are stored.
+    - grid_files (str): The directory path where the grid files are stored.
+    - compare_n (int, optional): The number of top results to consider. Default is 20.
+    - ks_stat (str, optional): The column name of the KS statistic in the results. Default is 'ks_stat'.
+    - save_dir (str, optional): The directory path to save the top results. Default is None.
+
+    Returns:
+    - ks_rank_grid_dict (dict): A dictionary containing the top results for each sample.
+
+    """
+    grid_dict = {}
+    ks_rank_grid_dict = {}
+    grid_file_list = os.listdir(grid_files)
+    for g in grid_file_list:
+        grid_sample_name = get_crc_sample_label(g)
+        grid_dict[grid_sample_name] = grid_files + '/' + g
+    for f in os.listdir(ks_results_dir):
+        if f.endswith('.csv'):
+            ks_sample_name = f[:5]
+            ks_results = pd.read_csv(os.path.join(ks_results_dir, f))
+            top_ks_results = ks_results.nlargest(compare_n, ks_stat)
+            ks_result_grid_file = grid_dict[ks_sample_name]
+            ks_result_grid = load_tile_rois(ks_result_grid_file)
+            # Initialize new columns in top_ks_results
+            top_ks_results['X_centroid'] = None
+            top_ks_results['Y_centroid'] = None
+
+            # Convert keys from tuples to strings
+            ks_result_grid = {str(k): v for k, v in ks_result_grid.items()}
+            
+            # Iterate over each row in top_ks_results
+            for index, row in top_ks_results.iterrows():
+                grid_location = row['grid_location']
+
+                # Locate the corresponding DataFrame in ks_result_grid
+                if grid_location in ks_result_grid.keys():
+                    grid_data = ks_result_grid[grid_location]
+                    
+                    # Calculate the centroid values
+                    x_centroid = grid_data['X_centroid'].mean()
+                    y_centroid = grid_data['Y_centroid'].mean()
+                    
+                    # Add the centroid values to top_ks_results
+                    top_ks_results.at[index, 'X_centroid'] = x_centroid
+                    top_ks_results.at[index, 'Y_centroid'] = y_centroid
+
+            if save_dir is not None:
+                top_ks_results.to_csv(os.path.join(save_dir, ks_sample_name + '_top_ks_results.csv'))
+            ks_rank_grid_dict[ks_sample_name] = top_ks_results
+    return ks_rank_grid_dict
 
