@@ -566,7 +566,8 @@ def rank_and_calculate_distance(ks_results_dir,
                                 compare_n = 20,
                                 ks_stat='ks_stat',
                                 save_dir=None,
-                                log_scale_ks=False):
+                                log_scale_ks=False,
+                                bounding_box=True):
     """
     Ranks and calculates distance for the top results based on the KS statistic.
 
@@ -576,6 +577,8 @@ def rank_and_calculate_distance(ks_results_dir,
     - compare_n (int, optional): The number of top results to consider. Default is 20.
     - ks_stat (str, optional): The column name of the KS statistic in the results. Default is 'ks_stat'.
     - save_dir (str, optional): The directory path to save the top results. Default is None.
+    - log_scale_ks (bool, optional): Whether to apply logarithmic scaling to the KS statistic. Default is False.
+    - bounding_box (bool, optional): Whether to calculate the bounding box coordinates. Default is True.
 
     Returns:
     - ks_rank_grid_dict (dict): A dictionary containing the top results for each sample.
@@ -616,6 +619,26 @@ def rank_and_calculate_distance(ks_results_dir,
                     # Add the centroid values to top_ks_results
                     top_ks_results.at[index, 'X_centroid'] = x_centroid
                     top_ks_results.at[index, 'Y_centroid'] = y_centroid
+
+                    if bounding_box is True:
+                        # Calculate the bounding box
+                        min_x = float('inf')
+                        min_y = float('inf')
+                        max_x = float('-inf')
+                        max_y = float('-inf')
+                        # Iterate over each point in grid_location
+                        for point in grid_data['grid_location']:
+                            x, y = point
+                            min_x = min(min_x, x)
+                            min_y = min(min_y, y)
+                            max_x = max(max_x, x)
+                            max_y = max(max_y, y)
+
+                        # Add the bounding box coordinates to top_ks_results
+                        top_ks_results.at[index, 'min_x'] = min_x
+                        top_ks_results.at[index, 'min_y'] = min_y
+                        top_ks_results.at[index, 'max_x'] = max_x
+                        top_ks_results.at[index, 'max_y'] = max_y
             
             # Calculate the distance from the previous row
             distances = [0]  # First row has a distance of 0
@@ -651,7 +674,23 @@ def combine_clinical_and_tcm(clinical_data_file,
                              save_path,
                              markers=None,
                              ks_stat='log_ks_stat'):
-    
+    """
+    Combines clinical data with TCM (Tumor Cell Mapping) data and saves the combined data to a CSV file.
+
+    Parameters:
+    - clinical_data_file (str): The file path of the clinical data CSV file.
+    - results_directory (str): The directory path containing the TCM data CSV files.
+    - save_path (str): The file path to save the combined data CSV file.
+    - markers (list or None): The list of marker names to consider. If None, all markers will be considered.
+    - ks_stat (str): The name of the column in the TCM data representing the KS statistic. Default is 'log_ks_stat'.
+
+    Returns:
+    - None
+
+    Raises:
+    - ValueError: If a Specimen_ID from the TCM data is not found in the clinical data.
+
+    """
     clinical_data = pd.read_csv(clinical_data_file)
     
     # Ensure the columns exist in the DataFrame
@@ -697,8 +736,54 @@ def combine_clinical_and_tcm(clinical_data_file,
                 if i-1 < len(distance_list):
                     value = distance_list[i-1][0] if len(distance_list[i-1]) > 0 else None
                     clinical_data.at[clinical_row_index, f'distance_{i}_{markers}'] = float(value) if value else None
-
+    clinical_data = clinical_data.drop(columns=[col for col in clinical_data.columns if 'distance_1_' in col])
     clinical_data.to_csv(save_path, index=False)
     return
 
+def generate_ks_heatmap(grid_files,
+                        results_directory,
+                        grid_index_name='grid_location',
+                        display_plot=True,
+                        save_plot=False,
+                        bounding_box=True,
+                        **kwargs):
+    grid_dict = {}
+    # Create a dictionary that holds the grid file paths and a sample label
+    for g in grid_files:
+        sample_name = get_crc_sample_label(g)
+        grid_dict[sample_name] = grid_files + '/' + g
+    for f in os.listdir(results_directory):
+        if f.endswith('.csv'):
+            # Locate correct result file for the sample grid
+            ks_sample_name = f[:5]
+            ks_results = pd.read_csv(os.path.join(results_directory, f))
+            ks_result_grid_file = grid_dict[ks_sample_name]
+            ks_result_grid = load_tile_rois(ks_result_grid_file)
+            # Convert keys from tuples to strings
+            ks_result_grid = {str(k): v for k, v in ks_result_grid.items()}
 
+            # Iterate over each result and match the results to a sample grid
+            for index, row in ks_results.iterrows():
+                grid_location = row[grid_index_name]
+                # Locate the corresponding DataFrame in ks_result_grid
+                if grid_location in ks_result_grid.keys():
+                    grid_data=ks_result_grid[grid_location]
+                    if bounding_box is True:
+                        # Calculate the bounding box
+                        min_x = float('inf')
+                        min_y = float('inf')
+                        max_x = float('-inf')
+                        max_y = float('-inf')
+                        # Iterate over each point in grid_location
+                        for point in grid_data['grid_location']:
+                            x, y = point
+                            min_x = min(min_x, x)
+                            min_y = min(min_y, y)
+                            max_x = max(max_x, x)
+                            max_y = max(max_y, y)
+
+                        # Add the bounding box coordinates to ks_results
+                        ks_results.at[index, 'min_x'] = min_x
+                        ks_results.at[index, 'min_y'] = min_y
+                        ks_results.at[index, 'max_x'] = max_x
+                        ks_results.at[index, 'max_y'] = max_y
