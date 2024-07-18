@@ -764,11 +764,11 @@ def get_sample_raw_files(data_dir,
     return file_paths
 
 
-def generate_ks_grid_heatmap(grid_files,
+def generate_grid_heatmap(grid_files,
                         sample_files,
                         results_directory,
                         grid_index_name='grid_location',
-                        ks_stat_col = 'ks_stat',
+                        stat_col = 'ks_stat',
                         x_coord = 'X_centroid',
                         y_coord = 'Y_centroid',
                         display_plot=True,
@@ -833,7 +833,104 @@ def generate_ks_grid_heatmap(grid_files,
             x_max = ks_results['max_x']
             y_min = ks_results['min_y']
             y_max = ks_results['max_y']
-            ks_stat = ks_results[ks_stat_col]
+            ks_stat = ks_results[stat_col]
+            # Simple baseline plot function
+            sns.set_style('white')
+            fig, ax = plt.subplots()
+            ax.plot(sample_file_df['X_centroid'], sample_file_df['Y_centroid'], 
+                    'o', color='lightgray', markersize=0.015, alpha=0.5, **kwargs)
+            
+                # Overlay translucent rectangles based on bounding box coordinates and normalized ks_stat values
+            for i in range(len(ks_results)):
+                rect = plt.Rectangle((x_min[i], y_min[i]), x_max[i] - x_min[i], y_max[i] - y_min[i],
+                                    color=sns.color_palette(cmap, as_cmap=True)(ks_stat[i]), alpha=0.3)
+                ax.add_patch(rect)
+            # Create a ScalarMappable and add the colorbar
+            sm = ScalarMappable(cmap=cmap)
+            sm.set_array([])
+            fig.colorbar(sm, ax=ax)
+            # Add plot title
+            ax.set_title(f'{ks_sample_name} {title_text} Heatmap')
+            if save_plot is True:
+                if save_directory is not None:
+                    plt.savefig(f'{save_directory}{ks_sample_name}_heatmap.png')
+                else:
+                    plt.savefig(f'{ks_sample_name}_heatmap.png', dpi=450)
+            if display_plot is True:
+                plt.show()
+    return
+
+def generate_heatmap(grid_files,
+                        sample_files,
+                        results_directory,
+                        grid_index_name='grid_location',
+                        stat_col = 'ks_stat',
+                        x_coord = 'X_centroid',
+                        y_coord = 'Y_centroid',
+                        display_plot=True,
+                        save_plot=False,
+                        bounding_box=True,
+                        save_directory=None,
+                        title_text = 'K-S Test', 
+                        cmap='viridis',
+                        **kwargs):
+    grid_dict = {}
+    # Create a dictionary that holds the grid file paths and a sample label
+    grid_files_list = os.listdir(grid_files)
+    grid_files_list = [os.path.join(grid_files, file) for file in grid_files_list]
+    for g in grid_files_list:
+        sample_name = get_crc_sample_label(g)
+        grid_dict[sample_name] = g
+    # Create a list of sample file paths
+    if os.path.isdir(sample_files) is True:
+        sample_files = get_sample_raw_files(sample_files)
+    elif os.path.isfile(sample_files) is True:
+        sample_files = [sample_files]
+    else: 
+        raise ValueError("Invalid sample_files path. Path must be a valid directory or file path.")
+    print("Sample Files: ", sample_files)
+    for f in os.listdir(results_directory):
+        if f.endswith('.csv'):
+            # Locate correct result file and original sample file for the sample grid
+            ks_sample_name = f[:5]
+            print('KS Sample Name: ', ks_sample_name)
+            sample_file = next((file for file in sample_files if ks_sample_name in file), None)
+            print('Sample File: ', sample_file)
+            if sample_file is not None:
+                sample_file_df = pd.read_csv(sample_file)
+            else:
+                raise ValueError(f"No sample file found for sample name: {sample_name}")
+            ks_results = pd.read_csv(os.path.join(results_directory, f))
+            ks_result_grid_file = grid_dict[ks_sample_name]
+            ks_result_grid = load_tile_rois(ks_result_grid_file)
+            # Convert keys from tuples to strings
+            ks_result_grid = {str(k): v for k, v in ks_result_grid.items()}
+
+            # Iterate over each result and match the results to a sample grid
+            for index, row in ks_results.iterrows():
+                grid_location = row[grid_index_name]
+                # Locate the corresponding DataFrame in ks_result_grid
+                if grid_location in ks_result_grid.keys():
+                    grid_data=ks_result_grid[grid_location]
+                    print(grid_data.head())
+                    if bounding_box is True:
+                        # Calculate the bounding box
+                        min_x = grid_data['X_centroid'].min()
+                        max_x = grid_data['X_centroid'].max()
+                        min_y = grid_data['Y_centroid'].min()
+                        max_y = grid_data['Y_centroid'].max()
+
+                        # Add the bounding box coordinates to ks_results
+                        ks_results.at[index, 'min_x'] = min_x
+                        ks_results.at[index, 'min_y'] = min_y
+                        ks_results.at[index, 'max_x'] = max_x
+                        ks_results.at[index, 'max_y'] = max_y
+            # Plot the heatmap for a given sample
+            x_min = ks_results['min_x']
+            x_max = ks_results['max_x']
+            y_min = ks_results['min_y']
+            y_max = ks_results['max_y']
+            ks_stat = ks_results[stat_col]
             # Simple baseline plot function
             sns.set_style('white')
             fig, ax = plt.subplots()
