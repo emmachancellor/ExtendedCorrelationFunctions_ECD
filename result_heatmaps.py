@@ -22,7 +22,7 @@ if __name__ == '__main__':
     results_directory = '/michorlab/ecdyer/multiplex_spatial/tcm_results/pdl1_cd45/'
     save_directory = '/michorlab/ecdyer/multiplex_spatial/figures/pdl1_cd45_heatmaps/'
 
-    generate_ks_heatmap(grid_files,
+    generate_grid_heatmap(grid_files,
                          sample_files,
                          results_directory,
                          save_directory=save_directory,
