@@ -121,7 +121,8 @@ class TumorCellSimulator:
 
     def simulate_gpu(self, 
                      n_points_per_type: dict, 
-                     mode: str = 'mixed', 
+                     mode: str = 'mixed',
+                     save_path: str = None,
                      **params) -> tuple[np.ndarray, np.ndarray]:
         """
         Simulate tumor cell distributions using GPU-accelerated calculations.
@@ -132,6 +133,8 @@ class TumorCellSimulator:
             Dictionary mapping cell types to number of points to generate
         mode : str, default='mixed'
             Simulation mode - currently only 'mixed' is supported
+        save_path : str, optional
+            Path to save the output points and labels as a CSV file
         **params : dict
             Additional simulation parameters including:
             - component_ratio : float
@@ -190,7 +193,19 @@ class TumorCellSimulator:
                     current_points_gpu = new_points_gpu
                     current_energy = new_energy
             
-            return cp.asnumpy(current_points_gpu), current_labels
+            final_points = cp.asnumpy(current_points_gpu)
+            
+            # Save to CSV if path is provided
+            if save_path is not None:
+                import pandas as pd
+                df = pd.DataFrame({
+                    'x': final_points[:, 0],
+                    'y': final_points[:, 1],
+                    'label': current_labels
+                })
+                df.to_csv(save_path, index=False)
+            
+            return final_points, current_labels
 
     def calculate_interaction_energy(self, points, **energy_params):
         """
@@ -220,7 +235,7 @@ class TumorCellSimulator:
         
         return attractive + repulsive
     
-    def simulate_raw(self, n_points_per_type, noise_level=0.1):
+    def simulate_raw(self, n_points_per_type, noise_level=0.1, save_path=None):
         """
         Simulate raw data for each cell type based purely on the original distribution
         without additional parameters or interactions.
@@ -230,6 +245,8 @@ class TumorCellSimulator:
             Dictionary mapping cell types to number of points to generate
         noise_level: float
             Standard deviation of Gaussian noise to add to sampled points
+        save_path: str, optional
+            Path to save the output points and labels as a CSV file
             
         Returns:
         tuple (points, labels):
@@ -259,7 +276,20 @@ class TumorCellSimulator:
             all_points.extend(cell_points)
             all_labels.extend([cell_type] * n_points)
         
-        return np.array(all_points), np.array(all_labels)
+        final_points = np.array(all_points)
+        final_labels = np.array(all_labels)
+        
+        # Save to CSV if path is provided
+        if save_path is not None:
+            import pandas as pd
+            df = pd.DataFrame({
+                'x': final_points[:, 0],
+                'y': final_points[:, 1],
+                'label': final_labels
+            })
+            df.to_csv(save_path, index=False)
+            
+        return final_points, final_labels
 
     def fit_gmm(self, n_components='auto'):
         """
@@ -394,8 +424,8 @@ class TumorCellSimulator:
         return np.array(all_points), np.array(all_labels)
 
     def simulate(self, n_points_per_type, mode='mixed', component_ratio=0.7, n_components=3, 
-                overlap_density=0.5, n_iterations=1000, temperature=0.1, 
-                **energy_params):
+                overlap_density=0.5, n_iterations=1000, temperature=0.1,
+                save_path=None, **energy_params):
         """
         Simulate cell distribution with specified parameters
         
@@ -416,13 +446,15 @@ class TumorCellSimulator:
             Number of optimization iterations
         temperature: float
             Temperature parameter for optimization
+        save_path: str, optional
+            Path to save the output points and labels as a CSV file
         **energy_params: dict
             Parameters for interaction energy calculation
         """
         if mode == 'gmm':
-            return self.simulate_pure_gmm(n_points_per_type)
+            final_points, final_labels = self.simulate_pure_gmm(n_points_per_type)
         elif mode == 'random':
-            return self.simulate_pure_random(n_points_per_type)
+            final_points, final_labels = self.simulate_pure_random(n_points_per_type)
         elif mode == 'mixed':
             # Generate initial distribution
             current_points, current_labels = self.generate_mixed_distribution(
@@ -450,25 +482,62 @@ class TumorCellSimulator:
                     current_points = new_points
                     current_energy = new_energy
             
-            return current_points, current_labels
+            final_points, final_labels = current_points, current_labels
         else:
             raise ValueError("Mode must be 'mixed', 'gmm', or 'random'")
+            
+        # Save to CSV if path is provided
+        if save_path is not None:
+            import pandas as pd
+            df = pd.DataFrame({
+                'x': final_points[:, 0],
+                'y': final_points[:, 1],
+                'label': final_labels
+            })
+            df.to_csv(save_path, index=False)
+            
+        return final_points, final_labels
+
+# def plot_cell_distribution(points, labels, title, 
+#                            colors={0: 'blue', 1: 'red'}, ax=None):
+#     """Helper function to plot cell distributions"""
+#     labels = labels.astype(int)
+#     for cell_type in np.unique(labels):
+#         mask = labels == cell_type
+#         ax.scatter(points[mask, 0], points[mask, 1],
+#                   c=colors[cell_type], alpha=0.6, label=cell_type)
+#     if ax is None:
+#         _, ax = plt.subplots()
+    
+#     # Create scatter plot with different colors for each cell type
+#     #colors = {'tumor': 'red', 'immune': 'blue'}
+#     for cell_type in np.unique(labels):
+#         mask = labels == cell_type
+#         ax.scatter(points[mask, 0], points[mask, 1], 
+#                 c=colors[cell_type], alpha=0.6, label=cell_type)
+    
+#     ax.set_title(title)
+#     ax.legend()
+#     ax.grid(True, alpha=0.3)
+#     ax.set_aspect('equal')
+    
+#     return ax
 
 def plot_cell_distribution(points, labels, title, ax=None):
-    """Helper function to plot cell distributions"""
     if ax is None:
-        _, ax = plt.subplots(figsize=(8, 8))
+        _, ax = plt.subplots()
     
-    # Create scatter plot with different colors for each cell type
-    colors = {'tumor': 'red', 'immune': 'blue'}
-    for cell_type in np.unique(labels):
-        mask = labels == cell_type
-        ax.scatter(points[mask, 0], points[mask, 1], 
-                c=colors[cell_type], alpha=0.6, label=cell_type)
+    colors = {
+        0: 'blue',  # Immune cells
+        1: 'red'    # Tumor cells
+    }
+    
+    for label in np.unique(labels):
+        mask = labels == label
+        ax.scatter(points[mask, 0], points[mask, 1],
+                  c=colors[label], label=f'Type {label}',
+                  alpha=0.6, s=10)
     
     ax.set_title(title)
     ax.legend()
-    ax.grid(True, alpha=0.3)
-    ax.set_aspect('equal')
-    
     return ax

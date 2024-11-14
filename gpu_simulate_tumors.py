@@ -5,7 +5,7 @@ from ecd_helperFunctions import *
 btc_pt2_s2 = pd.read_csv('/home/ecdyer/PROJECTS/mIF_stats/data/S2_BTC.csv')
 
 # Get tumor cell and immune cell counts
-btc_pt2_s2['tumor_immune'] = np.where(btc_pt2_s2['sox2_mean'] > btc_pt2_s2['cd45_mean'], 0, 1)
+btc_pt2_s2['tumor_immune'] = np.where(btc_pt2_s2['sox2_mean'] > btc_pt2_s2['cd45_mean'], 0, 1).astype(int)
 
 # Example usage:
 coordinates = btc_pt2_s2[['centroid_x_um', 'centroid_y_um']].to_numpy()
@@ -52,6 +52,34 @@ immune_exclusion_params = {
     ('tumor', 'immune'): {'interaction_range': 12.0, 'attraction_strength': 0.2, 'repulsion_strength': 2.5}
 }
 
+# 3. Immune Ring/Boundary Formation
+immune_ring_params = {
+    ('tumor', 'tumor'): {'interaction_range': 10.0, 'attraction_strength': 2.5, 'repulsion_strength': 1.0},
+    ('immune', 'immune'): {'interaction_range': 8.0, 'attraction_strength': 1.2, 'repulsion_strength': 1.0},
+    ('tumor', 'immune'): {'interaction_range': 20.0, 'attraction_strength': 0.3, 'repulsion_strength': 1.8}
+}
+
+# 4. Scattered Immune Surveillance
+immune_surveillance_params = {
+    ('tumor', 'tumor'): {'interaction_range': 12.0, 'attraction_strength': 1.5, 'repulsion_strength': 1.2},
+    ('immune', 'immune'): {'interaction_range': 15.0, 'attraction_strength': 0.3, 'repulsion_strength': 1.5},
+    ('tumor', 'immune'): {'interaction_range': 18.0, 'attraction_strength': 1.0, 'repulsion_strength': 1.0}
+}
+
+# 5. Dense Tumor Clustering with Immune Hotspots
+dense_cluster_params = {
+    ('tumor', 'tumor'): {'interaction_range': 6.0, 'attraction_strength': 3.0, 'repulsion_strength': 1.2},
+    ('immune', 'immune'): {'interaction_range': 8.0, 'attraction_strength': 2.0, 'repulsion_strength': 0.8},
+    ('tumor', 'immune'): {'interaction_range': 10.0, 'attraction_strength': 0.5, 'repulsion_strength': 1.5}
+}
+
+# 6. Diffuse Mixed Distribution
+diffuse_mixed_params = {
+    ('tumor', 'tumor'): {'interaction_range': 15.0, 'attraction_strength': 0.8, 'repulsion_strength': 1.8},
+    ('immune', 'immune'): {'interaction_range': 12.0, 'attraction_strength': 0.6, 'repulsion_strength': 1.5},
+    ('tumor', 'immune'): {'interaction_range': 10.0, 'attraction_strength': 1.0, 'repulsion_strength': 1.0}
+}
+
 # 1. High immune cell infiltration:
 high_immune_points, high_immune_labels = simulator.simulate_gpu(
     n_points_per_type=n_points_per_type,
@@ -68,36 +96,65 @@ immune_exclusion_points, immune_exclusion_labels = simulator.simulate_gpu(
     interaction_scale=0.2
 )
 
+# 3. Immune Ring Formation:
+immune_ring_points, immune_ring_labels = simulator.simulate_gpu(
+    n_points_per_type=n_points_per_type,
+    interaction_params=immune_ring_params,
+    overlap_density=0.5,
+    interaction_scale=0.4
+)
+
+# 4. Scattered Immune Surveillance:
+immune_surveillance_points, immune_surveillance_labels = simulator.simulate_gpu(
+    n_points_per_type=n_points_per_type,
+    interaction_params=immune_surveillance_params,
+    overlap_density=0.4,
+    interaction_scale=0.5
+)
+
+# 5. Dense Tumor Clustering:
+dense_cluster_points, dense_cluster_labels = simulator.simulate_gpu(
+    n_points_per_type=n_points_per_type,
+    interaction_params=dense_cluster_params,
+    overlap_density=0.8,
+    interaction_scale=0.3
+)
+
+# 6. Diffuse Mixed Distribution:
+diffuse_mixed_points, diffuse_mixed_labels = simulator.simulate_gpu(
+    n_points_per_type=n_points_per_type,
+    interaction_params=diffuse_mixed_params,
+    overlap_density=0.5,
+    interaction_scale=0.4
+)
+
 colors = {
-    0: 'blue',  # Immune cells
-    1: 'red'    # Tumor cells
+    np.int64(0): 'blue',  # Immune cells
+    np.int64(1): 'red'    # Tumor cells
 }
 
-# Ensure cell_labels are integers
-cell_labels = cell_labels.astype(int)
-print(cell_labels)
+# Create visualization with 3x2 subplots for all 6 patterns
+fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6)) = plt.subplots(3, 2, figsize=(15, 20))
+fig.suptitle('Multi-Cell Tumor Simulation Comparison', fontsize=16, y=1)
 
-# Create visualization
-fig, axes = plt.subplots(2, 2, figsize=(15, 15))
-fig.suptitle('Multi-Cell Tumor Simulation Comparison', fontsize=16, y=0.95)
-
-# Plot original data
-# Convert DataFrame to NumPy array
-points = btc_pt2_s2[['centroid_x_um', 'centroid_y_um']].to_numpy()
-plot_cell_distribution(points, cell_labels, 
-                      'Original Data', axes[0, 0])
-
-# Plot raw simulation
-plot_cell_distribution(raw_points, raw_labels,
-                      'Raw Simulation', axes[0, 1])
-
-# Plot default mixed simulation
+# Plot all six simulations
 plot_cell_distribution(high_immune_points, high_immune_labels,
-                      'High Immune Infiltration Parameters', axes[1, 0])
+                      'High Immune Infiltration', ax1)
 
-# Plot custom mixed simulation
 plot_cell_distribution(immune_exclusion_points, immune_exclusion_labels,
-                      'Immune Exclusion Parameters', axes[1, 1])
+                      'Immune Exclusion', ax2)
+
+plot_cell_distribution(immune_ring_points, immune_ring_labels,
+                      'Immune Ring Formation', ax3)
+
+plot_cell_distribution(immune_surveillance_points, immune_surveillance_labels,
+                      'Scattered Immune Surveillance', ax4)
+
+plot_cell_distribution(dense_cluster_points, dense_cluster_labels,
+                      'Dense Tumor Clustering', ax5)
+
+plot_cell_distribution(diffuse_mixed_points, diffuse_mixed_labels,
+                      'Diffuse Mixed Distribution', ax6)
 
 plt.tight_layout()
 plt.show()
@@ -109,7 +166,7 @@ def print_distribution_stats(points, labels, title):
     for cell_type in np.unique(labels):
         mask = labels == cell_type
         cell_points = points[mask]
-        print(f"\n{cell_type} CELLS:")
+        print(f"\n{cell_type} Cells:")
         print(f"Count: {np.sum(mask)}")
         print(f"Mean position: ({cell_points[:, 0].mean():.2f}, {cell_points[:, 1].mean():.2f})")
         print(f"Std deviation: ({cell_points[:, 0].std():.2f}, {cell_points[:, 1].std():.2f})")
@@ -121,9 +178,11 @@ def print_distribution_stats(points, labels, title):
         print(f"Mean distance to nearest neighbor: {distances[:, 1].mean():.2f}")
 
 # Print statistics for all distributions
-print_distribution_stats(points, cell_labels, "Original Data")
-print_distribution_stats(raw_points, raw_labels, "Raw Simulation")
-print_distribution_stats(high_immune_points, high_immune_labels, "High Immune Infiltration Parameters")
-print_distribution_stats(immune_exclusion_points, immune_exclusion_labels, "Immune Exclusion Parameters")
+print_distribution_stats(high_immune_points, high_immune_labels, "High Immune Infiltration")
+print_distribution_stats(immune_exclusion_points, immune_exclusion_labels, "Immune Exclusion")
+print_distribution_stats(immune_ring_points, immune_ring_labels, "Immune Ring Formation")
+print_distribution_stats(immune_surveillance_points, immune_surveillance_labels, "Scattered Immune Surveillance")
+print_distribution_stats(dense_cluster_points, dense_cluster_labels, "Dense Tumor Clustering")
+print_distribution_stats(diffuse_mixed_points, diffuse_mixed_labels, "Diffuse Mixed Distribution")
 
 fig.savefig('/home/ecdyer/PROJECTS/mIF_stats/figures/Multi_Cell_Tumor_Simulation_Comparison.png', dpi=300)
