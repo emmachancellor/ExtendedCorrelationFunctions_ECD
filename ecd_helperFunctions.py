@@ -956,3 +956,11 @@ def generate_heatmap(grid_files,
             if display_plot is True:
                 plt.show()
     return
+
+def create_cell_type_columns(df: pd.DataFrame):
+    """
+    Create one-hot encoded columns for immune and tumor cells
+    """
+    df['immune_cell'] = (df['label'] == 0).astype(int)
+    df['tumor_cell'] = (df['label'] == 1).astype(int)
+    return df
