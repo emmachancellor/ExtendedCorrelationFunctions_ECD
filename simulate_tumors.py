@@ -1,4 +1,5 @@
 import numpy as np
+import cupy as cp
 from scipy import stats
 from scipy.spatial.distance import pdist, squareform
 import matplotlib.pyplot as plt
@@ -64,6 +65,133 @@ class TumorCellSimulator:
                 kernel='gaussian'
             ).fit(data)
     
+    def calculate_interaction_energy_gpu(self, 
+                                         points: np.ndarray, 
+                                         **energy_params: dict) -> np.ndarray:
+        """
+        Calculate the interaction energy between points using GPU acceleration.
+        
+        This method computes pairwise interaction energies between all points using a combination
+        of attractive and repulsive forces. Calculations are performed on GPU using CuPy for
+        improved performance with large point sets.
+        
+        Parameters:
+        -----------
+        points : numpy.ndarray
+            Array of shape (n_points, 2) containing x,y coordinates of points
+        **energy_params : dict
+            Dictionary of energy calculation parameters including:
+            - interaction_range : float
+                Range parameter controlling decay of interactions (default: 10.0)
+            - attraction_strength : float 
+                Strength of attractive forces between points (default: 1.0)
+            - repulsion_strength : float
+                Strength of repulsive forces between points (default: 2.0)
+                
+        Returns:
+        --------
+        numpy.ndarray
+            Array of shape (n_points, n_points) containing pairwise interaction energies
+            between all points. Diagonal elements are set to infinity.
+        
+        Notes:
+        ------
+        The total energy is calculated as:
+        E = -attraction_strength * exp(-r/interaction_range) + repulsion_strength/(r^2)
+        where r is the pairwise distance between points.
+        """
+        # Move data to GPU
+        points_gpu = cp.asarray(points)
+        
+        # Get parameters
+        interaction_range = energy_params.get('interaction_range', 10.0)
+        attraction_strength = energy_params.get('attraction_strength', 1.0)
+        repulsion_strength = energy_params.get('repulsion_strength', 2.0)
+        
+        # Calculate pairwise distances on GPU
+        diff = points_gpu[:, None, :] - points_gpu[None, :, :]
+        distances = cp.sqrt(cp.sum(diff ** 2, axis=-1))
+        cp.fill_diagonal(distances, cp.inf)
+        
+        # Calculate energies on GPU
+        attractive = -attraction_strength * cp.exp(-distances / interaction_range)
+        repulsive = repulsion_strength / (distances ** 2 + 1e-6)
+        
+        return cp.asnumpy(attractive + repulsive)
+
+    def simulate_gpu(self, 
+                     n_points_per_type: dict, 
+                     mode: str = 'mixed', 
+                     **params) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Simulate tumor cell distributions using GPU-accelerated calculations.
+        
+        Parameters
+        ----------
+        n_points_per_type : dict
+            Dictionary mapping cell types to number of points to generate
+        mode : str, default='mixed'
+            Simulation mode - currently only 'mixed' is supported
+        **params : dict
+            Additional simulation parameters including:
+            - component_ratio : float
+                Proportion of points from GMM components (0-1)
+            - n_components : int 
+                Number of GMM components
+            - overlap_density : float
+                Density parameter for co-localized points (0-1)
+            - energy_params : dict
+                Parameters for interaction energy calculation
+            - temperature : float
+                Temperature parameter for Monte Carlo simulation
+            - n_iterations : int
+                Number of Monte Carlo iterations
+                
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            - Array of shape (n_points, 2) containing simulated point coordinates
+            - Array of shape (n_points,) containing point labels
+        """
+        if mode == 'mixed':
+            current_points, current_labels = self.generate_mixed_distribution(
+                n_points_per_type, 
+                params.get('component_ratio', 0.7),
+                params.get('n_components', 3),
+                params.get('overlap_density', 0.5)
+            )
+            
+            # Move initial points to GPU
+            current_points_gpu = cp.asarray(current_points)
+            current_energy = cp.sum(self.calculate_interaction_energy_gpu(
+                current_points_gpu, **params.get('energy_params', {})
+            ))
+            
+            n_total_points = len(current_points)
+            temperature = params.get('temperature', 0.1)
+            
+            # Batch processing for Monte Carlo steps
+            batch_size = 100  # Process multiple points simultaneously
+            for i in range(0, params.get('n_iterations', 1000), batch_size):
+                # Generate multiple proposals simultaneously
+                point_indices = cp.random.randint(n_total_points, size=batch_size)
+                noise = cp.random.normal(0, 0.1, size=(batch_size, 2))
+                
+                new_points_gpu = current_points_gpu.copy()
+                new_points_gpu[point_indices] += noise
+                
+                new_energy = cp.sum(self.calculate_interaction_energy_gpu(
+                    new_points_gpu, **params.get('energy_params', {})
+                ))
+                
+                # Accept/reject based on energy difference
+                delta_energy = new_energy - current_energy
+                if delta_energy < 0 or cp.random.random() < cp.exp(-delta_energy / temperature):
+                    current_points_gpu = new_points_gpu
+                    current_energy = new_energy
+            
+            return cp.asnumpy(current_points_gpu), current_labels
+
     def calculate_interaction_energy(self, points, **energy_params):
         """
         Calculate interaction energy between points
