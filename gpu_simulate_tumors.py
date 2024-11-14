@@ -133,28 +133,35 @@ colors = {
     np.int64(1): 'red'    # Tumor cells
 }
 
-# Create visualization with 3x2 subplots for all 6 patterns
-fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6)) = plt.subplots(3, 2, figsize=(15, 20))
+# Create visualization with 4x2 subplots for all 8 patterns
+fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6), (ax7, ax8)) = plt.subplots(4, 2, figsize=(15, 25))
 fig.suptitle('Multi-Cell Tumor Simulation Comparison', fontsize=16, y=1)
 
-# Plot all six simulations
+# Plot original data and raw simulation
+plot_cell_distribution(coordinates, cell_labels,
+                      'Original Data', ax1)
+
+plot_cell_distribution(raw_points, raw_labels,
+                      'Raw Simulation', ax2)
+
+# Plot the six pattern simulations
 plot_cell_distribution(high_immune_points, high_immune_labels,
-                      'High Immune Infiltration', ax1)
+                      'High Immune Infiltration', ax3)
 
 plot_cell_distribution(immune_exclusion_points, immune_exclusion_labels,
-                      'Immune Exclusion', ax2)
+                      'Immune Exclusion', ax4)
 
 plot_cell_distribution(immune_ring_points, immune_ring_labels,
-                      'Immune Ring Formation', ax3)
+                      'Immune Ring Formation', ax5)
 
 plot_cell_distribution(immune_surveillance_points, immune_surveillance_labels,
-                      'Scattered Immune Surveillance', ax4)
+                      'Scattered Immune Surveillance', ax6)
 
 plot_cell_distribution(dense_cluster_points, dense_cluster_labels,
-                      'Dense Tumor Clustering', ax5)
+                      'Dense Tumor Clustering', ax7)
 
 plot_cell_distribution(diffuse_mixed_points, diffuse_mixed_labels,
-                      'Diffuse Mixed Distribution', ax6)
+                      'Diffuse Mixed Distribution', ax8)
 
 plt.tight_layout()
 plt.show()
