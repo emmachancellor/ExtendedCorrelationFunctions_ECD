@@ -969,33 +969,26 @@ def create_cell_type_columns(df: pd.DataFrame):
     df['tumor_cell'] = (df['label'] == 1).astype(int)
     return df
 
-def spatial_perturb_matrix(matrix, delta_range=(-1, 1)):
+def spatial_perturb_matrix(df, delta_range=(-1, 1)):
     """
-    Perturbs the spatial location of points within a matrix by randomly shifting
-    each element within a specified delta range.
+    Perturbs the spatial location of points within a DataFrame by randomly shifting
+    each point's coordinates within a specified delta range.
     
     Parameters:
-    - matrix (numpy array): The original matrix to be perturbed.
-    - delta_range (tuple): A tuple specifying the min and max shift for the location of each point.
+    - df (pandas.DataFrame): The original DataFrame containing point coordinates
+    - delta_range (tuple): A tuple specifying the min and max shift for the coordinates
     
     Returns:
-    - perturbed_matrix (numpy array): The perturbed matrix with values shifted randomly.
+    - perturbed_df (pandas.DataFrame): The DataFrame with perturbed coordinates
     """
-    # Get dimensions of the matrix
-    rows, cols = matrix.shape
-    perturbed_matrix = np.zeros_like(matrix)
+    # Create a copy of the DataFrame to avoid modifying the original
+    perturbed_df = df.copy()
     
-    # Iterate through each point in the matrix
-    for i in range(rows):
-        for j in range(cols):
-            # Randomly determine the new row and column within the delta range
-            new_i = np.clip(i + np.random.randint(delta_range[0], delta_range[1] + 1), 0, rows - 1)
-            new_j = np.clip(j + np.random.randint(delta_range[0], delta_range[1] + 1), 0, cols - 1)
-            
-            # Assign the value to the new location in the perturbed matrix
-            perturbed_matrix[new_i, new_j] += matrix[i, j]  # Aggregate values if they overlap
+    # Add random perturbations to x and y coordinates
+    perturbed_df['x'] += np.random.uniform(delta_range[0], delta_range[1], size=len(df))
+    perturbed_df['y'] += np.random.uniform(delta_range[0], delta_range[1], size=len(df))
     
-    return perturbed_matrix
+    return perturbed_df
 
 
 def calculate_tcm_from_df(data_path,
@@ -1062,9 +1055,9 @@ def calculate_tcm_from_df(data_path,
 
     # Generate pointcloud object
     pc_df = generate_binary_pointcloud(df, 
-                                markers, 
-                                keep_cols,
-                                labels)
+                                markers=markers, 
+                                keep_cols=keep_cols,
+                                labels=labels)
     # Convert points to numpy array
     points = np.asarray([pc_df['x'], pc_df['y']]).transpose()
 
@@ -1083,11 +1076,12 @@ def calculate_tcm_from_df(data_path,
                                     maxCorrelationThreshold=5.0, 
                                     kernelRadius=150, 
                                     kernelSigma=50, 
-                                    visualiseStages=True)
+                                    visualiseStages=visualise)
     return tcm
 
 def calculate_max_sens(baseline_df,
-                        perturbed_df):
+                        perturbed_df,
+                        max_sensitivity):
     # Calculate the L2-norm difference between the original and perturbed explanations
     difference = np.linalg.norm(baseline_df - perturbed_df)
         
