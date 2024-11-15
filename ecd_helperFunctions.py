@@ -1083,7 +1083,9 @@ def calculate_max_sens(baseline_df,
                         perturbed_df,
                         max_sensitivity):
     # Calculate the L2-norm difference between the original and perturbed explanations
-    difference = np.linalg.norm(baseline_df - perturbed_df)
+    # Normalise the difference by the L2-norm of the original explanation to compare across simulations/baselines
+    # Measures the relative difference and can be compared accross different baseline matrices
+    difference = np.linalg.norm(baseline_df - perturbed_df) / np.linalg.norm(baseline_df)
         
     # Update max sensitivity if the current difference is larger
     max_sensitivity = max(max_sensitivity, difference)

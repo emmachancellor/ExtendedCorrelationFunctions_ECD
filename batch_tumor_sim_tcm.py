@@ -19,7 +19,6 @@ labels = {1: 'Tumor', 2: 'Immune'}
 keep_cols = ['x', 'y']
 num_perturbations = 100
 delta_range = (-0.01, 0.01)
-all_max_sens = []
 results = {'sample': []}
 save_dir = '/home/ecdyer/PROJECTS/mIF_stats/tcm_max_sens'
 
@@ -28,6 +27,7 @@ for sample in simulation_sample_list:
     simulation_list = os.listdir(sim_path)
     results['sample'].append(sample)
     for i, sim_type in enumerate(simulation_list):
+        all_max_sens = []
         sim_name = sim_type.replace('.csv', '')
         baseline_tcm = None
         sim_type_path = os.path.join(sim_path, sim_type)
