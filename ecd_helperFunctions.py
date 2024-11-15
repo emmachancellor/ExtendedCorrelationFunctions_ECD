@@ -202,9 +202,9 @@ def load_tile_rois(hdf5_path):
     return loaded_grid_dataframes
 
 def generate_binary_pointcloud(df, 
-                               markers, 
-                               keep_cols, 
+                               markers,  
                                labels, 
+                               keep_cols=None,
                                rename_cols_dict=None):
     """
     Generate a binary point cloud dataframe based on the given input dataframe.
@@ -225,7 +225,10 @@ def generate_binary_pointcloud(df,
         raise ValueError("This function can only generate a binary point cloud dataframe for two markers.")
 
     # Keep only the necessary columns
-    df = df[keep_cols + markers]
+    if keep_cols is not None:
+        df = df[keep_cols + markers]
+    else:
+        df = df[markers]
 
     # Ensure that cells are only called as one cell type (remove redundant rows)
     # If marker 1 and marker 2 are both positive, set marker 2 to 0
@@ -237,7 +240,8 @@ def generate_binary_pointcloud(df,
     df = df.copy()
     df.loc[:, 'Celltype_asNumeric'] = (df.loc[:, markers[0]] * 1) + (df.loc[:, markers[1]] * 2)
     df.loc[:, 'Celltype'] = df['Celltype_asNumeric'].map(labels)
-    df = df.rename(columns=rename_cols_dict)
+    if rename_cols_dict is not None:
+        df = df.rename(columns=rename_cols_dict)
     df.drop(markers, axis=1, inplace=True)
     return df
 
@@ -964,3 +968,129 @@ def create_cell_type_columns(df: pd.DataFrame):
     df['immune_cell'] = (df['label'] == 0).astype(int)
     df['tumor_cell'] = (df['label'] == 1).astype(int)
     return df
+
+def spatial_perturb_matrix(matrix, delta_range=(-1, 1)):
+    """
+    Perturbs the spatial location of points within a matrix by randomly shifting
+    each element within a specified delta range.
+    
+    Parameters:
+    - matrix (numpy array): The original matrix to be perturbed.
+    - delta_range (tuple): A tuple specifying the min and max shift for the location of each point.
+    
+    Returns:
+    - perturbed_matrix (numpy array): The perturbed matrix with values shifted randomly.
+    """
+    # Get dimensions of the matrix
+    rows, cols = matrix.shape
+    perturbed_matrix = np.zeros_like(matrix)
+    
+    # Iterate through each point in the matrix
+    for i in range(rows):
+        for j in range(cols):
+            # Randomly determine the new row and column within the delta range
+            new_i = np.clip(i + np.random.randint(delta_range[0], delta_range[1] + 1), 0, rows - 1)
+            new_j = np.clip(j + np.random.randint(delta_range[0], delta_range[1] + 1), 0, cols - 1)
+            
+            # Assign the value to the new location in the perturbed matrix
+            perturbed_matrix[new_i, new_j] += matrix[i, j]  # Aggregate values if they overlap
+    
+    return perturbed_matrix
+
+
+def calculate_tcm_from_df(data_path,
+                          markers,
+                          labels,
+                          keep_cols,
+                          typea='Tumor',
+                          typeb='Immune',
+                          pointcloud_name='tumor_immune',
+                          visualise=False,
+                          df=None,
+                          perturb_matrix=False):
+    """
+    Calculate the Topographical Correlation Map (TCM) from a dataframe or CSV file.
+
+    Parameters:
+    -----------
+    data_path : str, optional
+        Path to CSV file containing cell data. Required if df is None.
+    markers : list
+        List of marker names to use for cell type identification.
+    labels : dict
+        Dictionary mapping numerical labels to cell type names.
+    keep_cols : list
+        List of column names to keep for spatial coordinates (e.g. ['x', 'y']).
+    typea : str, optional
+        First cell type to correlate. Default is 'Tumor'.
+    typeb : str, optional
+        Second cell type to correlate. Default is 'Immune'.
+    pointcloud_name : str, optional
+        Name for the generated point cloud object. Default is 'tumor_immune'.
+    visualise : bool, optional
+        Whether to display visualization of the point cloud. Default is False.
+    df : pandas.DataFrame, optional
+        Input dataframe containing cell data. Required if data_path is None.
+
+    Returns:
+    --------
+    ndarray
+        The topographical correlation map between the two specified cell types.
+
+    Raises:
+    -------
+    ValueError
+        If neither data_path nor df is provided.
+
+    Notes:
+    ------
+    This function processes cell data to generate a TCM showing spatial relationships
+    between two cell types. It handles data input either as a CSV file or dataframe,
+    performs one-hot encoding of cell types, and generates a point cloud representation
+    before calculating the correlation map.
+    """
+    if data_path is not None:
+        df = pd.read_csv(data_path)
+    elif df is not None:
+        pass
+    else:
+        raise ValueError("No data path or dataframe provided")
+    if perturb_matrix is True:
+        df = spatial_perturb_matrix(df)
+    # One hot encode the cell types
+    df = create_cell_type_columns(df)
+
+    # Generate pointcloud object
+    pc_df = generate_binary_pointcloud(df, 
+                                markers, 
+                                keep_cols,
+                                labels)
+    # Convert points to numpy array
+    points = np.asarray([pc_df['x'], pc_df['y']]).transpose()
+
+    # Convert pc_df['Celltype'] to a list
+    celltype_list = pc_df['Celltype'].tolist()
+
+    pc = generatePointCloud(pointcloud_name, points)
+    pc.addLabels('Celltype', 'categorical', celltype_list, cmap='tab10')
+
+    if visualise is True:
+        visualisePointCloud(pc, 'Celltype', markerSize=100)
+
+    # Calculate TCM
+    tcm = topographicalCorrelationMap(pc, 'Celltype', typea, 'Celltype', typeb, 
+                                    radiusOfInterest=100, 
+                                    maxCorrelationThreshold=5.0, 
+                                    kernelRadius=150, 
+                                    kernelSigma=50, 
+                                    visualiseStages=True)
+    return tcm
+
+def calculate_max_sens(baseline_df,
+                        perturbed_df):
+    # Calculate the L2-norm difference between the original and perturbed explanations
+    difference = np.linalg.norm(baseline_df - perturbed_df)
+        
+    # Update max sensitivity if the current difference is larger
+    max_sensitivity = max(max_sensitivity, difference)
+    return max_sensitivity
