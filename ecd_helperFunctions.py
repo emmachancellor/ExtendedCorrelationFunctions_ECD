@@ -1090,3 +1090,33 @@ def calculate_max_sens(baseline_df,
     # Update max sensitivity if the current difference is larger
     max_sensitivity = max(max_sensitivity, difference)
     return max_sensitivity
+
+
+def calculate_infidelity(baseline_df, 
+                         perturbed_df,
+                         baseline_infidelity):
+    """
+    Calculate the infidelity metric directly from baseline and perturbed attributions.
+
+    Parameters:
+    ----------
+    baseline : ndarray
+        Array of baseline feature attributions.
+    perturbed : ndarray
+        Array of perturbed feature attributions.
+    baseline_infidelity : float
+        The baseline infidelity score.
+
+    Returns:
+    --------
+    float
+        The computed infidelity score.
+    """
+    if baseline_df.shape != perturbed_df.shape:
+        raise ValueError("Baseline and perturbed DataFrames must have the same shape.")
+
+    # Compute the infidelity: squared differences
+    diff = (baseline_df - perturbed_df) ** 2
+    max_infidelity = max(np.mean(diff), baseline_infidelity)
+    # Return the mean infidelity score across all elements
+    return max_infidelity

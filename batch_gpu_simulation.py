@@ -1,38 +1,40 @@
 import os
+import scipy
+from scipy.spatial import cKDTree
 from simulate_tumors import TumorCellSimulator
 from simulate_tumors import *
 from ecd_helperFunctions import *
 
-samples = os.listdir('/home/ecdyer/PROJECTS/mIF_stats/data/')
+samples = os.listdir('/mnt/labshare/PROJECTS/SPATIAL_STATS/data/P2_BTC')
 samples = [s for s in samples if 'csv' in s]
 
 for sample in samples:
-    sample_name = sample[:-8]
+    sample_name = sample[:-4]
     print("Conducting simulation for", sample_name)
 
     # Create simulation directory for this sample if it doesn't exist
-    sim_dir = f'/home/ecdyer/PROJECTS/mIF_stats/simulations/{sample_name}'
+    sim_dir = f'/mnt/labshare/PROJECTS/SPATIAL_STATS/simulations/{sample_name}'
     if not os.path.exists(sim_dir):
         os.makedirs(sim_dir)
 
     # Define paths for each simulation type
-    raw_sim_path = f'/home/ecdyer/PROJECTS/mIF_stats/simulations/{sample_name}/{sample_name}_raw.csv'
-    mixed_sim_path = f'/home/ecdyer/PROJECTS/mIF_stats/simulations/{sample_name}/{sample_name}_mixed.csv'
-    high_infiltration_sim_path = f'/home/ecdyer/PROJECTS/mIF_stats/simulations/{sample_name}/{sample_name}_high_infiltration.csv'
-    immune_exclusion_sim_path = f'/home/ecdyer/PROJECTS/mIF_stats/simulations/{sample_name}/{sample_name}_immune_exclusion.csv'
-    immune_ring_sim_path = f'/home/ecdyer/PROJECTS/mIF_stats/simulations/{sample_name}/{sample_name}_immune_ring.csv'
-    immune_surveillance_sim_path = f'/home/ecdyer/PROJECTS/mIF_stats/simulations/{sample_name}/{sample_name}_immune_surveillance.csv'
-    dense_cluster_sim_path = f'/home/ecdyer/PROJECTS/mIF_stats/simulations/{sample_name}/{sample_name}_dense_cluster.csv'
-    diffuse_mixed_sim_path = f'/home/ecdyer/PROJECTS/mIF_stats/simulations/{sample_name}/{sample_name}_diffuse_mixed.csv'
+    raw_sim_path = f'/mnt/labshare/PROJECTS/SPATIAL_STATS/simulations/{sample_name}/{sample_name}_raw.csv'
+    mixed_sim_path = f'/mnt/labshare/PROJECTS/SPATIAL_STATS/simulations/{sample_name}/{sample_name}_mixed.csv'
+    high_infiltration_sim_path = f'/mnt/labshare/PROJECTS/SPATIAL_STATS/simulations/{sample_name}/{sample_name}_high_infiltration.csv'
+    immune_exclusion_sim_path = f'/mnt/labshare/PROJECTS/SPATIAL_STATS/simulations/{sample_name}/{sample_name}_immune_exclusion.csv'
+    immune_ring_sim_path = f'/mnt/labshare/PROJECTS/SPATIAL_STATS/simulations/{sample_name}/{sample_name}_immune_ring.csv'
+    immune_surveillance_sim_path = f'/mnt/labshare/PROJECTS/SPATIAL_STATS/simulations/{sample_name}/{sample_name}_immune_surveillance.csv'
+    dense_cluster_sim_path = f'/mnt/labshare/PROJECTS/SPATIAL_STATS/simulations/{sample_name}/{sample_name}_dense_cluster.csv'
+    diffuse_mixed_sim_path = f'/mnt/labshare/PROJECTS/SPATIAL_STATS/simulations/{sample_name}/{sample_name}_diffuse_mixed.csv'
 
     # Define figure path 
-    fig_path = f'/home/ecdyer/PROJECTS/mIF_stats/figures/{sample_name}simulation_comparison.png'
+    fig_path = f'/mnt/labshare/PROJECTS/SPATIAL_STATS/figures/{sample_name}simulation_comparison.png'
 
     # Load data
-    data = pd.read_csv(f'/home/ecdyer/PROJECTS/mIF_stats/data/{sample}')
+    data = pd.read_csv(f'/mnt/labshare/PROJECTS/SPATIAL_STATS/data/P2_BTC/{sample}')
 
     # Example usage:
-    coordinates = data[['centroid_x_um', 'centroid_y_um']].to_numpy()
+    coordinates = data[['x_centroid', 'y_centroid']].to_numpy()
     cell_labels = data['tumor_immune'].values
 
     np.random.seed(42)
@@ -194,7 +196,6 @@ for sample in samples:
             print(f"Std deviation: ({cell_points[:, 0].std():.2f}, {cell_points[:, 1].std():.2f})")
             
             # Calculate average distance to nearest neighbor of same type
-            from scipy.spatial import cKDTree
             tree = cKDTree(cell_points)
             distances, _ = tree.query(cell_points, k=2)  # k=2 to get nearest neighbor (first point is self)
             print(f"Mean distance to nearest neighbor: {distances[:, 1].mean():.2f}")
