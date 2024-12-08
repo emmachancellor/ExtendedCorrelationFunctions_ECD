@@ -969,7 +969,9 @@ def create_cell_type_columns(df: pd.DataFrame):
     df['tumor_cell'] = (df['label'] == 1).astype(int)
     return df
 
-def spatial_perturb_matrix(df, delta_range=(-1, 1)):
+def spatial_perturb_matrix(df, 
+                            delta_range=(-1, 1),
+                            perturb_columns = ['x', 'y']):
     """
     Perturbs the spatial location of points within a DataFrame by randomly shifting
     each point's coordinates within a specified delta range.
@@ -984,9 +986,9 @@ def spatial_perturb_matrix(df, delta_range=(-1, 1)):
     # Create a copy of the DataFrame to avoid modifying the original
     perturbed_df = df.copy()
     
-    # Add random perturbations to x and y coordinates
-    perturbed_df['x'] += np.random.uniform(delta_range[0], delta_range[1], size=len(df))
-    perturbed_df['y'] += np.random.uniform(delta_range[0], delta_range[1], size=len(df))
+    # Add random perturbations to columns
+    for i in perturb_columns:
+        perturbed_df[i] += np.random.uniform(delta_range[0], delta_range[1], size=len(df))
     
     return perturbed_df
 
@@ -1024,6 +1026,8 @@ def calculate_tcm_from_df(data_path,
         Whether to display visualization of the point cloud. Default is False.
     df : pandas.DataFrame, optional
         Input dataframe containing cell data. Required if data_path is None.
+    perturb_matrix : bool, optional
+        Whether to perturb the spatial coordinates of the points. Default is False.
 
     Returns:
     --------
@@ -1120,3 +1124,117 @@ def calculate_infidelity(baseline_df,
     max_infidelity = max(np.mean(diff), baseline_infidelity)
     # Return the mean infidelity score across all elements
     return max_infidelity
+
+def mantel_test(matrix1, matrix2, permutations=1000):
+    """
+    Perform a Mantel test to calculate the correlation between two distance matrices.
+    
+    Parameters:
+        matrix1: numpy array, first distance matrix
+        matrix2: numpy array, second distance matrix
+        permutations: int, number of permutations for significance testing
+    
+    Returns:
+        mantel_r: Mantel correlation coefficient
+        p_value: p-value for the test
+    """
+    # Flatten the upper triangle of both matrices to get pairwise distances
+    dist1 = matrix1[np.triu_indices_from(matrix1, k=1)]
+    dist2 = matrix2[np.triu_indices_from(matrix2, k=1)]
+    
+    # Calculate the Pearson correlation as the Mantel statistic
+    mantel_r, _ = pearsonr(dist1, dist2)
+    
+    # Permutation test for significance
+    permuted_rs = []
+    for _ in range(permutations):
+        permuted = np.random.permutation(dist2)
+        permuted_r, _ = pearsonr(dist1, permuted)
+        permuted_rs.append(permuted_r)
+    
+    # Calculate p-value based on permutations
+    permuted_rs = np.array(permuted_rs)
+    p_value = np.sum(np.abs(permuted_rs) >= np.abs(mantel_r)) / permutations
+    
+    return mantel_r, p_value
+
+def calculate_gd(data_path,
+                 markers,
+                 labels,
+                 keep_cols,
+                 distance_cols=['x_centroid', 'y_centroid'],
+                 intensity_cols=['sox2_mean', 'cd45_mean'],
+                 perturb_matrix=False,
+                 roi_tile_size=1000):
+    """
+    Calculate the Geodesic Distance (GD) between spatial and intensity features across ROIs.
+
+    Parameters:
+    -----------
+    data_path : str, optional
+        Path to CSV file containing cell data. Required if df is None.
+    markers : list
+        List of marker names to use for cell type identification.
+    labels : dict
+        Dictionary mapping numerical labels to cell type names.
+    keep_cols : list
+        List of column names to keep for spatial coordinates.
+    distance_cols : list, optional
+        Column names for spatial coordinates. Default is ['x_centroid', 'y_centroid'].
+    intensity_cols : list, optional
+        Column names for intensity features. Default is ['sox2_mean', 'cd45_mean'].
+    perturb_matrix : bool, optional
+        Whether to perturb the spatial coordinates and intensity values. Default is False.
+    roi_tile_size : int, optional
+        Size of ROI tiles for dividing the data. Default is 1000.
+
+    Returns:
+    --------
+    list
+        List of Mantel correlation coefficients between distance and intensity matrices for each ROI.
+
+    Raises:
+    -------
+    ValueError
+        If neither data_path nor df is provided.
+
+    Notes:
+    ------
+    This function:
+    1. Loads data from CSV or uses provided dataframe
+    2. Divides data into ROIs based on tile_size
+    3. Optionally perturbs spatial and intensity values
+    4. Calculates Mantel correlation between distance and intensity matrices for each ROI
+    """
+    mantel_tests = []
+    if data_path is not None:
+        df = pd.read_csv(data_path)
+    elif df is not None:
+        pass
+    else:
+        raise ValueError("No data path or dataframe provided")
+    
+    # Get distance df
+    dist_df = df[distance_cols]
+
+    # Get intensity df
+    intensity_df = df[intensity_cols]
+
+    # Divide data into ROIs
+    dist_rois = create_tile_rois(dist_df, 
+                                 tile_size=roi_tile_size, 
+                                 x_coord=distance_cols[0], 
+                                 y_coord=distance_cols[1])
+    intensity_rois = create_tile_rois(intensity_df, 
+                                      tile_size=roi_tile_size, 
+                                      x_coord=intensity_cols[0], 
+                                      y_coord=intensity_cols[1])
+
+    if perturb_matrix is True:
+        for key in intensity_rois.keys():
+            intensity_rois[key] = spatial_perturb_matrix(intensity_rois[key], perturb_columns=intensity_cols)
+            dist_rois[key] = spatial_perturb_matrix(dist_rois[key], perturb_columns=distance_cols)
+            mantel_r, _ = mantel_test(intensity_rois[key], dist_rois[key], permutations=1000)
+            mantel_tests.append(mantel_r)
+    
+    return mantel_tests
