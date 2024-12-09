@@ -9,6 +9,8 @@ import time
 import logging
 from functools import partial
 from matplotlib.cm import ScalarMappable
+from scipy.stats import pearsonr
+from scipy.spatial.distance import pdist, squareform
 from helperFunctions import *
 from smallestEnclosingCircle import make_circle
 from sklearn.mixture import GaussianMixture
@@ -134,7 +136,8 @@ def create_tile_rois(df,
                      x_coord='X_centroid',
                      y_coord='Y_centroid', 
                      save=False, 
-                     save_hdf5=None):
+                     save_hdf5=None,
+                     drop_cols=None):
     """
     Create tile-based regions of interest (ROIs) from a dataframe of cell coordinates.
 
@@ -145,7 +148,7 @@ def create_tile_rois(df,
         y_coord (str, optional): The column name for the Y-coordinate of each cell. Defaults to 'Y_centroid'.
         save (bool, optional): Whether to save the ROIs as individual files. Defaults to False.
         save_hdf5 (str, optional): Path to an HDF5 file to save grid dataframes for future use. Defaults to None.
-
+        drop_cols (list, optional): A list of column names to drop from the grid dataframes. Defaults to None.
     Returns:
         dict: A dictionary containing individual dataframes for each tile, grouped by grid indices.
     """
@@ -162,8 +165,10 @@ def create_tile_rois(df,
 
     # Iterate over the grid groups and create individual dataframes
     for (x, y), group in grid_groups:
-        if len(group) > 0:  # Check if there are points in the grid
-            grid_dataframes[(x, y)] = group.drop(['X_grid', 'Y_grid'], axis=1)
+        if len(group) > 0:  # Check if there are points (cells) in the grid
+            grid_dataframes[(int(x), int(y))] = group.drop(['X_grid', 'Y_grid'], axis=1)
+            if drop_cols is not None:
+                grid_dataframes[(int(x), int(y))] = grid_dataframes[(int(x), int(y))].drop(drop_cols, axis=1)
     if save:
         if save:
             if not save_hdf5 or not save_hdf5.endswith('.h5'):
@@ -1159,13 +1164,11 @@ def mantel_test(matrix1, matrix2, permutations=1000):
     return mantel_r, p_value
 
 def calculate_gd(data_path,
-                 markers,
-                 labels,
-                 keep_cols,
                  distance_cols=['x_centroid', 'y_centroid'],
                  intensity_cols=['sox2_mean', 'cd45_mean'],
                  perturb_matrix=False,
-                 roi_tile_size=1000):
+                 roi_tile_size=1000,
+                 return_bboxes=False):
     """
     Calculate the Geodesic Distance (GD) between spatial and intensity features across ROIs.
 
@@ -1215,10 +1218,11 @@ def calculate_gd(data_path,
         raise ValueError("No data path or dataframe provided")
     
     # Get distance df
+    print(df.head())
     dist_df = df[distance_cols]
 
     # Get intensity df
-    intensity_df = df[intensity_cols]
+    intensity_df = df[intensity_cols + distance_cols]
 
     # Divide data into ROIs
     dist_rois = create_tile_rois(dist_df, 
@@ -1228,7 +1232,8 @@ def calculate_gd(data_path,
     intensity_rois = create_tile_rois(intensity_df, 
                                       tile_size=roi_tile_size, 
                                       x_coord=intensity_cols[0], 
-                                      y_coord=intensity_cols[1])
+                                      y_coord=intensity_cols[1],
+                                      drop_cols=distance_cols)
 
     if perturb_matrix is True:
         for key in intensity_rois.keys():
@@ -1237,4 +1242,7 @@ def calculate_gd(data_path,
             mantel_r, _ = mantel_test(intensity_rois[key], dist_rois[key], permutations=1000)
             mantel_tests.append(mantel_r)
     
-    return mantel_tests
+    if return_bboxes is True:
+        return mantel_tests, dist_rois
+    else:
+        return mantel_tests
