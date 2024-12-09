@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import logging
+import matplotlib.cm as cm
 from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 from scipy.stats import pearsonr
 from helperFunctions import *
 from sklearn.mixture import GaussianMixture
@@ -1262,3 +1264,141 @@ def calculate_gd(data_path=None,
         return mantel_tests, bounding_boxes, mantel_dict
     else:
         return mantel_tests
+
+def plot_roi_explanations(data_dict, sample_df, bboxes,
+                       x_col='x_centroid', y_col='y_centroid',
+                       class_col='tumor_immune',
+                       class_values=[0, 1], class_names=['Tumor', 'Immune'],
+                       seaborn_style='darkgrid',
+                       figure_size=(10, 8),
+                       cmap=cm.RdBu,
+                       alpha=0.5, edgecolor='none', zorder_rect=2,
+                       text_color='black', text_ha='center', text_va='center',
+                       text_fontsize=8, text_zorder=3,
+                       xlabel='X Position', ylabel='Y Position', title='GBM Sample S1 - ROI Mantel Test Values',
+                       colorbar_label='Mantel Test Value',
+                       save_path=None, dpi=300, bbox_inches='tight',
+                       legend_kwargs=None, scatter_kwargs=None,
+                       show_labels=True):
+    # Set seaborn style
+    sns.set_style(seaborn_style)
+
+    # Replace NaN values with a default (e.g., the minimum valid value or zero)
+    explainer_values = [value for value in data_dict.values() if not np.isnan(value)]
+
+    # Handle edge cases with all NaNs or empty list
+    if explainer_values:
+        vmin, vmax = np.percentile(explainer_values, 5), np.percentile(explainer_values, 95)
+        norm = Normalize(vmin=vmin, vmax=vmax)
+    else:
+        vmin, vmax = 0, 1
+        norm = Normalize(vmin=vmin, vmax=vmax)
+
+    print(f"Adjusted explanation value range: {vmin} to {vmax}")
+
+    # Create figure with seaborn style
+    plt.figure(figsize=figure_size)
+
+    # Initialize default scatterplot options if not provided
+    if scatter_kwargs is None:
+        scatter_kwargs = {'s': 3, 'zorder': 1}
+    else:
+        # Ensure 's' and 'zorder' have default values if not provided
+        scatter_kwargs.setdefault('s', 3)
+        scatter_kwargs.setdefault('zorder', 1)
+
+    # Scatter plot with separate classes for the legend
+    for class_value, class_name in zip(class_values, class_names):
+        subset = sample_df[sample_df[class_col] == class_value]
+        sns.scatterplot(
+            data=subset,
+            x=x_col, y=y_col,
+            label=class_name,
+            **scatter_kwargs)
+
+    # Initialize default legend options if not provided
+    if legend_kwargs is None:
+        legend_kwargs = {'title': 'Tumor/Immune', 'markerscale': 5, 'loc': 'upper right', 'fontsize': 8}
+    else:
+        # Ensure default values if not provided
+        legend_kwargs.setdefault('title', 'Tumor/Immune')
+        legend_kwargs.setdefault('markerscale', 5)
+        legend_kwargs.setdefault('loc', 'upper right')
+        legend_kwargs.setdefault('fontsize', 8)
+
+    # Add legend for classes
+    plt.legend(**legend_kwargs)
+
+    # Draw heatmap rectangles
+    for key in bboxes:
+        min_x, max_x, min_y, max_y = bboxes[key]
+        width = max_x - min_x
+        height = max_y - min_y
+
+        # Get mantel value, replacing NaN with 0
+        explainer_value = data_dict.get(key, 0)
+        explainer_value = explainer_value if not np.isnan(explainer_value) else 0
+
+        # Determine color
+        color = cmap(norm(explainer_value))
+
+        # Draw rectangle
+        rect = plt.Rectangle((min_x, min_y), width, height, facecolor=color,
+                             alpha=alpha, edgecolor=edgecolor, zorder=zorder_rect)
+        plt.gca().add_patch(rect)
+
+        if show_labels:
+            # Calculate the center of the rectangle
+            center_x = min_x + width / 2
+            center_y = min_y + height / 2
+
+            # Add label at the center
+            plt.text(center_x, center_y, f'{key}', color=text_color,
+                     ha=text_ha, va=text_va, fontsize=text_fontsize, zorder=text_zorder)
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+
+    # Add colorbar
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    plt.colorbar(sm, ax=plt.gca(), label=colorbar_label)
+
+    if save_path:
+        plt.savefig(save_path, dpi=dpi, bbox_inches=bbox_inches)
+
+    plt.show()
+
+def compute_weighted_statistic(statistics, cell_counts_type_A, cell_counts_type_B):
+    """
+    Computes a weighted average of statistics across regions, weighted by the ratio of cell types.
+    The weight for each region is higher when the ratio of cell types is closer to 1:1,
+    and lower when the ratio deviates from 1:1, penalizing imbalanced regions.
+
+    Parameters:
+    statistics (list of float): Statistic values for each region.
+    cell_counts_type_A (list of int): Number of cells of type A in each region.
+    cell_counts_type_B (list of int): Number of cells of type B in each region.
+
+    Returns:
+    float: The weighted average statistic for the whole tissue.
+    """
+
+    weights = []
+    for n_A, n_B in zip(cell_counts_type_A, cell_counts_type_B):
+        min_cells = min(n_A, n_B)
+        max_cells = max(n_A, n_B)
+        if max_cells == 0:
+            weight = 0  # Assign zero weight if there are no cells of either type
+        else:
+            weight = min_cells / max_cells  # Weight decreases with imbalance
+        weights.append(weight)
+
+    numerator = sum(w * stat for w, stat in zip(weights, statistics))
+    denominator = sum(weights)
+    if denominator == 0:
+        return 0  # Return zero if all weights are zero
+    else:
+        weighted_average = numerator / denominator
+        return weighted_average
