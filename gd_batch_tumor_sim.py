@@ -58,6 +58,8 @@ for sample in simulation_sample_list:
                 explainer = 0
                 continue
         else:
+            #TODO: make this iterative for ROIs, so that the key between the baseline and perturbed gd is the same
+            #TODO: and the explainer is calculated for each ROI
             explainer = calculate_max_sens(baseline_gd, gd, explainer)
             all_explainer_stats.append(explainer)
             # Add max sensitivity values to appropriate key in results dict

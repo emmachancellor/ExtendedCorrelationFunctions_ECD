@@ -3,17 +3,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
-import pickle
-import random
-import time
 import logging
-from functools import partial
 from matplotlib.cm import ScalarMappable
 from scipy.stats import pearsonr
-from scipy.spatial.distance import pdist, squareform
 from helperFunctions import *
-from smallestEnclosingCircle import make_circle
 from sklearn.mixture import GaussianMixture
+from scipy.spatial.distance import pdist, squareform
 from scipy.stats import ks_2samp
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -154,8 +149,8 @@ def create_tile_rois(df,
     """
 
     # Calculate the grid indices for each cell
-    df['X_grid'] = (df[x_coord] // tile_size).astype(int)
-    df['Y_grid'] = (df[y_coord] // tile_size).astype(int)
+    df.loc[:, 'X_grid'] = (df[x_coord] // tile_size).astype(int)
+    df.loc[:, 'Y_grid'] = (df[y_coord] // tile_size).astype(int)
 
     # Group the cells by grid indices
     grid_groups = df.groupby(['X_grid', 'Y_grid'])
@@ -170,11 +165,10 @@ def create_tile_rois(df,
             if drop_cols is not None:
                 grid_dataframes[(int(x), int(y))] = grid_dataframes[(int(x), int(y))].drop(drop_cols, axis=1)
     if save:
-        if save:
-            if not save_hdf5 or not save_hdf5.endswith('.h5'):
-                raise ValueError("Invalid save_hdf5 path. Path must be a valid string ending in '.h5'.")
-            # Save each dataframe to the HDF5 file
-            save_grid_h5(grid_dataframes, save_hdf5)
+        if not save_hdf5 or not save_hdf5.endswith('.h5'):
+            raise ValueError("Invalid save_hdf5 path. Path must be a valid string ending in '.h5'.")
+        # Save each dataframe to the HDF5 file
+        save_grid_h5(grid_dataframes, save_hdf5)
     return grid_dataframes
 
 def load_tile_rois(hdf5_path):
@@ -1163,7 +1157,8 @@ def mantel_test(matrix1, matrix2, permutations=1000):
     
     return mantel_r, p_value
 
-def calculate_gd(data_path,
+def calculate_gd(data_path=None,
+                 df=None,
                  distance_cols=['x_centroid', 'y_centroid'],
                  intensity_cols=['sox2_mean', 'cd45_mean'],
                  perturb_matrix=False,
@@ -1176,6 +1171,8 @@ def calculate_gd(data_path,
     -----------
     data_path : str, optional
         Path to CSV file containing cell data. Required if df is None.
+    df : pandas.DataFrame, optional
+        Input dataframe containing cell data. Required if data_path is None.
     markers : list
         List of marker names to use for cell type identification.
     labels : dict
@@ -1218,7 +1215,6 @@ def calculate_gd(data_path,
         raise ValueError("No data path or dataframe provided")
     
     # Get distance df
-    print(df.head())
     dist_df = df[distance_cols]
 
     # Get intensity df
@@ -1231,18 +1227,38 @@ def calculate_gd(data_path,
                                  y_coord=distance_cols[1])
     intensity_rois = create_tile_rois(intensity_df, 
                                       tile_size=roi_tile_size, 
-                                      x_coord=intensity_cols[0], 
-                                      y_coord=intensity_cols[1],
+                                      x_coord=distance_cols[0], 
+                                      y_coord=distance_cols[1],
                                       drop_cols=distance_cols)
 
     if perturb_matrix is True:
-        for key in intensity_rois.keys():
+        mantel_dict = {}
+        for i, key in enumerate(intensity_rois.keys()):
+            print("Calculating perturbed intensity matrix for ROI: ", key, "for ", i, " of ", len(intensity_rois.keys()), " ROIs")
             intensity_rois[key] = spatial_perturb_matrix(intensity_rois[key], perturb_columns=intensity_cols)
+            # Create molecular distance matrix
+            molecular_distances = pdist(intensity_rois[key][intensity_cols], metric='euclidean')
+            if len(molecular_distances) < 2:
+                continue
+            molecular_distance_matrix = squareform(molecular_distances)
             dist_rois[key] = spatial_perturb_matrix(dist_rois[key], perturb_columns=distance_cols)
-            mantel_r, _ = mantel_test(intensity_rois[key], dist_rois[key], permutations=1000)
+            # Create geographic distance matrix
+            geographic_distances = pdist(dist_rois[key][distance_cols], metric='euclidean')
+            geographic_distance_matrix = squareform(geographic_distances)
+            mantel_r, _ = mantel_test(molecular_distance_matrix, geographic_distance_matrix, permutations=500)
+            print(mantel_r)
             mantel_tests.append(mantel_r)
-    
+            mantel_dict[key] = mantel_r
+
     if return_bboxes is True:
-        return mantel_tests, dist_rois
+        bounding_boxes = {}
+        for key, df in dist_rois.items():
+            # Calculate the bounding box coordinates
+            min_x = int(df[distance_cols[0]].min())
+            max_x = int(df[distance_cols[0]].max())
+            min_y = int(df[distance_cols[1]].min())
+            max_y = int(df[distance_cols[1]].max())
+            bounding_boxes[key] = [min_x, max_x, min_y, max_y]
+        return mantel_tests, bounding_boxes, mantel_dict
     else:
         return mantel_tests
