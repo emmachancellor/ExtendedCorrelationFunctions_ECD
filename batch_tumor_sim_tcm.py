@@ -29,7 +29,7 @@ results = {
         'dense_tumor_clustering': [],
         'diffuse_mixed_distribution': []
     }
-save_dir = '/mnt/labshare/PROJECTS/SPATIAL_STATS/tcm_max_sens'
+save_dir = '/mnt/labshare/PROJECTS/SPATIAL_STATS/tcm_results'
 
 for sample in simulation_sample_list:
     sim_path = os.path.join(simulations_dir, sample)
@@ -94,19 +94,19 @@ for sample in simulation_sample_list:
             results['diffuse_mixed_distribution'].append(max_sens)
 
         # Create line plot of max sensitivity values
-        plt.figure(figsize=(10,6))
-        sns.lineplot(data=all_max_sens, markers='o')
-        plt.xlabel('Perturbation Index')
-        plt.ylabel('Maximum Sensitivity')
-        plt.title(f'Maximum Sensitivity Over {num_perturbations} Perturbations\n{sim_name}')
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, f'{sample}_{sim_name}_max_sens_over_perturbations.png'))
-        plt.close()
+        # plt.figure(figsize=(10,6))
+        # sns.lineplot(data=all_max_sens, markers='o')
+        # plt.xlabel('Perturbation Index')
+        # plt.ylabel('Maximum Sensitivity')
+        # plt.title(f'Maximum Sensitivity Over {num_perturbations} Perturbations\n{sim_name}')
+        # plt.tight_layout()
+        # plt.savefig(os.path.join(save_dir, f'{sample}_{sim_name}_max_sens_over_perturbations.png'))
+        # plt.close()
 print(results)
 
 # Convert results dictionary to DataFrame and save as CSV
 results_df = pd.DataFrame(results)
-results_df.to_csv(os.path.join(save_dir, f'max_sens_results.csv'))
+results_df.to_csv(os.path.join(save_dir, f'infidelity_results.csv'))
 
 #Create heatmap of results
 # plt.figure(figsize=(10,8))

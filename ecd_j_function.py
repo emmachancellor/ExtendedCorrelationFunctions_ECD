@@ -178,7 +178,7 @@ def calculate_j_function(data_path=None,
                                  tile_size=roi_tile_size, 
                                  x_coord=distance_cols[0], 
                                  y_coord=distance_cols[1],
-                                 return_bboxes=True)
+                                 return_bboxes=return_bboxes)
     
     # Initialize dictionaries to store results
     j_functions = []
@@ -194,7 +194,7 @@ def calculate_j_function(data_path=None,
     }
 
     for i, key in enumerate(roi_data.keys()):
-        print(f"Calculating J-function for ROI: {key} ({i+1} of {len(roi_data.keys())} ROIs)")
+        #print(f"Calculating J-function for ROI: {key} ({i+1} of {len(roi_data.keys())} ROIs)")
 
         roi_df = roi_data[key]
 
