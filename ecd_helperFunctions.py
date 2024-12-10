@@ -1303,8 +1303,6 @@ def plot_roi_explanations(data_dict, sample_df, bboxes,
                        show_labels=True):
     # Set seaborn style
     sns.set_style(seaborn_style)
-
-    # Replace NaN values with a default (e.g., the minimum valid value or zero)
     explainer_values = [value for value in data_dict.values() if not np.isnan(value)]
 
     # Handle edge cases with all NaNs or empty list
