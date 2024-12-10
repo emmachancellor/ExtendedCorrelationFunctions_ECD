@@ -11,8 +11,8 @@ sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
 from ecd_helperFunctions import *
 from helperFunctions import *
 
-simulations_dir = '/mnt/labshare/PROJECTS/SPATIAL_STATS/simulations'
-simulation_sample_list = os.listdir(simulations_dir)
+data_dir = '/mnt/labshare/PROJECTS/SPATIAL_STATS/data'
+simulation_sample_list = os.listdir(data_dir)
 
 all_explainer_stats = []
 markers = ['tumor_cell', 'immune_cell']
@@ -22,73 +22,64 @@ num_perturbations = 2
 delta_range = (-0.01, 0.01)
 results = {
         'sample_name': [],
-        'raw_simulation': [],
-        'high_immune_infiltration': [], 
-        'immune_exclusion': [],
-        'immune_ring_formation': [],
-        'scattered_immune_surveillance': [],
-        'dense_tumor_clustering': [],
-        'diffuse_mixed_distribution': []
+        'infidelity': []
     }
 save_dir = '/mnt/labshare/PROJECTS/SPATIAL_STATS/gd_batch_tumor_sim'
 
 for sample in simulation_sample_list:
-    sim_path = os.path.join(simulations_dir, sample)
-    simulation_list = os.listdir(sim_path)
-    results['sample_name'].append(sample)
+    data_path = os.path.join(data_dir, sample)
+    simulation_list = os.listdir(data_path)
 
-    for i, sim_type in enumerate(simulation_list):
+    for i, sample in enumerate(simulation_list):
         all_explainer = []
-        sim_name = sim_type.replace('.csv', '')
+        sample_name = sample.replace('.csv', '')
         baseline_gd = None
-        sim_type_path = os.path.join(sim_path, sim_type)
-        print(f'Processing {sim_name} ({i+1} of {len(simulation_list)})')
+        sim_type_path = os.path.join(data_path, sample)
+        print(f'Processing {sample_name} ({i+1} of {len(simulation_list)})')
         
         for j in range(num_perturbations):
-            if j != 0:
-                perturb_matrix = True
-            else:
-                perturb_matrix = False
+            perturb_matrix = (j != 0) 
         
-            gd = calculate_gd(sim_type_path, 
-                            perturb_matrix=True)
-            
+            gd, cell_count_dict = calculate_gd(data_path=sim_type_path,
+                             distance_cols=['x_centroid', 'y_centroid'],
+                             intensity_cols=['sox2_mean', 'cd45_mean'],
+                             perturb_matrix=True,
+                             roi_tile_size=500,
+                             cell_label_col='tumor_immune',
+                             return_bboxes=False)
+            gd = np.array(gd)
+
             if j == 0:
-                baseline_gd = gd
+                baseline_gd = np.array(gd)
+                baseline_shape = baseline_gd.shape
                 explainer = 0
                 continue
         else:
-            #TODO: make this iterative for ROIs, so that the key between the baseline and perturbed gd is the same
-            #TODO: and the explainer is calculated for each ROI
-            explainer = calculate_max_sens(baseline_gd, gd, explainer)
-            all_explainer_stats.append(explainer)
-            # Add max sensitivity values to appropriate key in results dict
-        if 'raw' in sim_name:
-            results['raw_simulation'].append(explainer)
-        elif 'high_infiltration' in sim_name:
-            results['high_immune_infiltration'].append(explainer)
-        elif 'immune_exclusion' in sim_name:
-            results['immune_exclusion'].append(explainer)
-        elif 'immune_ring' in sim_name:
-            results['immune_ring_formation'].append(explainer)
-        elif 'immune_surveillance' in sim_name:
-            results['scattered_immune_surveillance'].append(explainer)
-        elif 'dense_cluster' in sim_name:
-            results['dense_tumor_clustering'].append(explainer)
-        elif 'diffuse_mixed' in sim_name:
-            results['diffuse_mixed_distribution'].append(explainer)
+            # Check if shapes match and pad/trim if necessary
+            if gd.shape != baseline_shape:
+                # Pad with zeros or trim to match baseline shape
+                padded_gd = np.zeros(baseline_shape)
+                min_rows = min(baseline_shape[0], gd.shape[0])
+                min_cols = min(baseline_shape[1], gd.shape[1])
+                padded_gd[:min_rows, :min_cols] = gd[:min_rows, :min_cols]
+                gd = padded_gd
+            explainer = calculate_infidelity(baseline_gd, gd, explainer)
+            all_explainer.append(explainer)
+        # Add max sensitivity values to appropriate key in results dict
+        results['sample_name'].append(sample_name)
+        results['infidelity'].append(explainer)
 
         # Create line plot of max sensitivity values
         plt.figure(figsize=(10,6))
         sns.lineplot(data=all_explainer, markers='o')
         plt.xlabel('Perturbation Index')
-        plt.ylabel('Maximum Sensitivity')
-        plt.title(f'Maximum Sensitivity Over {num_perturbations} Perturbations\n{sim_name}')
+        plt.ylabel('Infidelity')
+        plt.title(f'Infidelity Over {num_perturbations} Perturbations\n{sample_name}')
         plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, f'{sample}_{sim_name}_explainer_over_perturbations.png'))
+        plt.savefig(os.path.join(save_dir, f'{sample_name}_infidelity_over_perturbations.png'))
         plt.close()
 print(results)
 
 # Convert results dictionary to DataFrame and save as CSV
 results_df = pd.DataFrame(results)
-results_df.to_csv(os.path.join(save_dir, f'gd_max_sens_results.csv'))
+results_df.to_csv(os.path.join(save_dir, f'gd_infidelity_results.csv'))

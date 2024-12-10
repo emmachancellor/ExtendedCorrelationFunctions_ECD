@@ -134,7 +134,8 @@ def create_tile_rois(df,
                      y_coord='Y_centroid', 
                      save=False, 
                      save_hdf5=None,
-                     drop_cols=None):
+                     drop_cols=None,
+                     return_bboxes=False):
     """
     Create tile-based regions of interest (ROIs) from a dataframe of cell coordinates.
 
@@ -171,6 +172,16 @@ def create_tile_rois(df,
             raise ValueError("Invalid save_hdf5 path. Path must be a valid string ending in '.h5'.")
         # Save each dataframe to the HDF5 file
         save_grid_h5(grid_dataframes, save_hdf5)
+    if return_bboxes is True:
+        bounding_boxes = {}
+        for key, df in grid_dataframes.items():
+            # Calculate the bounding box coordinates
+            min_x = int(df[x_coord].min())
+            max_x = int(df[x_coord].max())
+            min_y = int(df[y_coord].min())
+            max_y = int(df[y_coord].max())
+            bounding_boxes[key] = [min_x, max_x, min_y, max_y]
+        return grid_dataframes, bounding_boxes
     return grid_dataframes
 
 def load_tile_rois(hdf5_path):
@@ -1168,7 +1179,27 @@ def calculate_gd(data_path=None,
                  cell_label_col='tumor_immune',
                  return_bboxes=False):
     """
-    [Function docstring remains the same]
+    Calculate the Getis-Ord G* statistic for spatial point patterns.
+
+    This function calculates the Getis-Ord G* statistic to identify spatial clusters of high or low values
+    in point pattern data. It can analyze both distance-based and intensity-based patterns.
+
+    Parameters:
+        data_path (str, optional): Path to CSV file containing point pattern data. Default is None.
+        df (pandas.DataFrame, optional): DataFrame containing point pattern data. Default is None.
+        distance_cols (list): Column names for spatial coordinates. Default is ['x_centroid', 'y_centroid'].
+        intensity_cols (list): Column names for intensity values. Default is ['sox2_mean', 'cd45_mean'].
+        perturb_matrix (bool): Whether to perturb the distance matrix. Default is False.
+        roi_tile_size (int): Size of regions of interest tiles. Default is 1000.
+        cell_label_col (str): Column name for cell type labels. Default is 'tumor_immune'.
+        return_bboxes (bool): Whether to return bounding boxes. Default is False.
+
+    Returns:
+        list: Getis-Ord G* statistics for each region
+        dict: Cell counts per region if return_bboxes is True
+
+    Raises:
+        ValueError: If neither data_path nor df is provided
     """
     mantel_tests = []
     if data_path is not None:
@@ -1177,7 +1208,8 @@ def calculate_gd(data_path=None,
         pass
     else:
         raise ValueError("No data path or dataframe provided")
-    
+    print(df.head())
+
     # Get distance df
     dist_df = df[distance_cols + [cell_label_col]]
 

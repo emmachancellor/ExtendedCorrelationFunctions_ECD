@@ -538,10 +538,12 @@ def topographicalCorrelationMap(pc,labelNameA,labelA,labelNameB,labelB,radiusOfI
     transformedMarks[transformedMarks>0] = (transformedMarks[transformedMarks>0]-1)/(maxCorrelationThreshold-1)
     
     if visualiseStages:
-        plt.figure(figsize=(20,20))
-        plt.scatter(p_A[:,0],p_A[:,1],c=transformedMarks,cmap='RdBu_r',vmin=-1,vmax=1,s=s)
-        plt.colorbar()
+        plt.figure(figsize=(10,8))
+        plt.scatter(p_A[:,0],p_A[:,1],c=transformedMarks,cmap='RdBu_r',vmin=-1,vmax=1,s=2)
+        plt.colorbar(label='TCM Score')
         plt.gca().axis('equal')
+        plt.title('GBM Sample S5_L1 - Topographical Correlation Map', fontsize=16, ha='center')
+        plt.savefig('/home/ecdyer/labshare/PROJECTS/SPATIAL_STATS/figures/tcm_maps/GBM_Sample_S5_L1_scatter_Topographical_Correlation_Map.png', dpi=300, bbox_inches='tight')
                           
                         
     x, y = np.meshgrid(np.arange(-kernelRadius,kernelRadius+0.1,1),np.arange(-kernelRadius,kernelRadius+0.1,1))
@@ -570,7 +572,7 @@ def topographicalCorrelationMap(pc,labelNameA,labelA,labelNameB,labelB,radiusOfI
     if visualiseStages:
         l = int(np.ceil(np.max([topographicalCorrelationMap.min(),topographicalCorrelationMap.max()])))
         fig, ax = plotTopographicalCorrelationMap(pc,topographicalCorrelationMap.T,ax=None,cmap='RdBu_r',colorbarLimit=l)
-    
+
     return topographicalCorrelationMap.T
 
 def plotTopographicalCorrelationMap(pc, topographicalCorrelationMap, ax=None, cmap='RdBu_r', colorbarLimit=None):
@@ -599,6 +601,8 @@ def plotTopographicalCorrelationMap(pc, topographicalCorrelationMap, ax=None, cm
     divider = make_axes_locatable(ax)
     cax = divider.append_axes('right', size='5%', pad=0.05)
     plt.gcf().colorbar(im, cax=cax, orientation='vertical')
+    ax.set_title('GBM Sample S5_L1 - Topographical Correlation Map', pad=20, fontsize=20, ha='center')
+    #plt.savefig('/home/ecdyer/labshare/PROJECTS/SPATIAL_STATS/figures/tcm_maps/GBM_Sample_S5_L1_Topographical_Correlation_Map.png', dpi=300, bbox_inches='tight')
     return plt.gcf(), plt.gca()
 
 
