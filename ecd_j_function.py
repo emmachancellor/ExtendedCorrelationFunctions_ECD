@@ -190,7 +190,9 @@ def calculate_j_function(data_path=None,
         'J_r': [],
         'AUC': [],
         'mean_deviation': [],
-        'max_deviation': []
+        'max_deviation': [],
+        'num_cell_a_points': [],
+        'num_cell_b_points': []
     }
 
     for i, key in enumerate(roi_data.keys()):
@@ -235,6 +237,8 @@ def calculate_j_function(data_path=None,
             summary_dict['AUC'].append(summary['AUC'])
             summary_dict['mean_deviation'].append(summary['mean_deviation'])
             summary_dict['max_deviation'].append(summary['max_deviation'])
+            summary_dict['num_cell_a_points'].append(len(cell_a_points))
+            summary_dict['num_cell_b_points'].append(len(cell_b_points))
 
     if return_summary:
         return j_functions, j_function_dict, summary_dict

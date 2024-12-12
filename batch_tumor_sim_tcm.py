@@ -74,7 +74,7 @@ for sample in simulation_sample_list:
                     tcm = padded_tcm
                 #max_sens = calculate_max_sens(baseline_tcm, tcm, max_sens)
                 # note, for simplicity I'm not changign the max_sens variable name, but this is calculating infidelity
-                max_sens = calculate_infidelity(baseline_tcm, tcm, max_sens)
+                max_sens = calculate_max_sens(baseline_tcm, tcm, max_sens)
                 all_max_sens.append(max_sens)
 
         # Add max sensitivity values to appropriate key in results dict
@@ -106,7 +106,7 @@ print(results)
 
 # Convert results dictionary to DataFrame and save as CSV
 results_df = pd.DataFrame(results)
-results_df.to_csv(os.path.join(save_dir, f'infidelity_results.csv'))
+results_df.to_csv(os.path.join(save_dir, f'max_sens_results.csv'))
 
 #Create heatmap of results
 # plt.figure(figsize=(10,8))

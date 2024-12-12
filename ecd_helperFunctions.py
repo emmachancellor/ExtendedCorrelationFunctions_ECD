@@ -12,6 +12,7 @@ from helperFunctions import *
 from sklearn.mixture import GaussianMixture
 from scipy.spatial.distance import pdist, squareform
 from scipy.stats import ks_2samp
+from scipy import stats
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configure logging
@@ -1421,3 +1422,106 @@ def compute_weighted_statistic(statistics, cell_counts_type_A, cell_counts_type_
     else:
         weighted_average = numerator / denominator
         return weighted_average
+
+def plot_correlation(data, 
+                     data_col_name, 
+                     sample_col_name, 
+                     x_label, 
+                     y_label, 
+                     title, 
+                     standard_axis_limits=True,
+                     output_path=None, 
+                     figsize=(10, 6), 
+                     legend_loc='upper left',
+                     legend_size=10,
+                     legend_title=None,
+                     dpi=300,
+                     show_plot=True):
+
+    # Set seaborn style
+    sns.set_style("darkgrid")
+
+    # Create scatter plot
+    plt.figure(figsize=figsize)
+
+    # Get unique samples for color mapping
+    unique_samples = data[sample_col_name].unique()
+    colors = plt.cm.tab20(np.linspace(0, 1, len(unique_samples)))
+    color_dict = dict(zip(unique_samples, colors))
+
+    # Calculate statistics to identify outliers
+    values = data[data_col_name].values.astype(np.float64)
+    ratio_values = data['ratio'].values
+
+    # Calculate Q1, Q3 and IQR for both metrics
+    q1_sens, q3_sens = np.percentile(values, [25, 75])
+    q1_ratio, q3_ratio = np.percentile(ratio_values, [25, 75])
+    iqr_sens = q3_sens - q1_sens
+    iqr_ratio = q3_ratio - q1_ratio
+
+    # Define bounds (1.5 * IQR method)
+    sens_lower = q1_sens - 1.5 * iqr_sens
+    sens_upper = q3_sens + 1.5 * iqr_sens
+    ratio_lower = q1_ratio - 1.5 * iqr_ratio
+    ratio_upper = q3_ratio + 1.5 * iqr_ratio
+
+    # Lists to store non-outlier points for regression
+    x_values = []
+    y_values = []
+
+    # Plot each point, excluding outliers
+    for _, row in data.iterrows():
+        ratio = row['ratio']
+        explainer = row[data_col_name]
+        sample_name = row[sample_col_name]
+
+        # Skip outliers
+        if (explainer < sens_lower or explainer > sens_upper or 
+            ratio < ratio_lower or ratio > ratio_upper):
+            continue
+
+        # Store values for regression
+        x_values.append(ratio)
+        y_values.append(explainer)
+
+        # Plot point
+        plt.scatter(ratio, explainer,
+                   color=color_dict[sample_name],
+                   label=sample_name,
+                   alpha=1)
+
+    # Calculate regression line
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x_values, y_values)
+    line = slope * np.array(x_values) + intercept
+
+    # Format p-value
+    if p_value > 0.001:
+        p_value_str = f'{p_value:.3f}'
+    else:
+        p_value_str = f'{p_value:.3e}'
+
+    # Plot regression line
+    plt.plot(x_values, line, 'r', label=f'Regression line\nr={r_value:.3f}, p={p_value_str}')
+
+    # Set axis limits slightly beyond the non-outlier bounds
+    if standard_axis_limits is True:
+        plt.ylim(0, max(y_values) * 1.1)
+        plt.xlim(0, max(x_values) * 1.1)
+    else:
+        plt.ylim(min(y_values)*1.1, max(y_values) * 1.1)
+        plt.xlim(min(x_values)*-1.1, max(x_values) * 1.1)
+
+    plt.ylabel(y_label)
+    plt.xlabel(x_label)
+    plt.title(title)
+
+    # Handle legend with unique entries only
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys(), loc=legend_loc, fontsize=legend_size, title=legend_title)
+
+    plt.tight_layout()
+    if output_path is not None:
+        plt.savefig(output_path, dpi=dpi)
+    if show_plot is True:
+        plt.show()
